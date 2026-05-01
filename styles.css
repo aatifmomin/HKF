@@ -1212,6 +1212,7 @@ input, textarea, select {
   height: 110px;
   object-fit: contain;
   display: block;
+  margin: 0 auto;
   /* Subtle drop shadow to make the logo pop on cream background */
   filter: drop-shadow(0 4px 8px rgba(154, 106, 31, 0.18));
 }
