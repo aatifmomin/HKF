@@ -1,0 +1,3887 @@
+<!DOCTYPE html>
+<html lang="en" data-lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Hasnain Karimain Foundation</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Inter:wght@300;400;500;600;700&family=Noto+Nastaliq+Urdu:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  /* ------------------------------------------------------------
+     DESIGN TOKENS — inspired by HK Foundation logo
+  ------------------------------------------------------------ */
+  :root {
+    --ink: #0a0a0a;
+    --ink-2: #141414;
+    --ink-3: #1c1c1c;
+    --ink-4: #262626;
+    --line: #2a2a2a;
+    --line-2: #383838;
+    --gold: #d4a857;
+    --gold-soft: #e8c989;
+    --gold-deep: #b08a3e;
+    --gold-glow: rgba(212, 168, 87, 0.15);
+    --cream: #f5ecd7;
+    --paper: #fbf7ee;
+    --paper-2: #f3ecd9;
+    --paper-3: #ebe1c7;
+    --text: #1a1a1a;
+    --text-soft: #4a4a4a;
+    --text-muted: #7a7a7a;
+    --success: #5a8a3a;
+    --success-bg: #e8f0d9;
+    --warn: #c97a2c;
+    --warn-bg: #fbe8d2;
+    --danger: #b53d3d;
+    --danger-bg: #fbe0e0;
+
+    --font-display: 'Cormorant Garamond', 'Times New Roman', serif;
+    --font-body: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-urdu: 'Noto Nastaliq Urdu', serif;
+
+    --radius-sm: 4px;
+    --radius: 8px;
+    --radius-lg: 14px;
+    --shadow-soft: 0 1px 2px rgba(0,0,0,0.04), 0 8px 24px rgba(0,0,0,0.06);
+    --shadow-card: 0 1px 3px rgba(0,0,0,0.05), 0 12px 32px rgba(0,0,0,0.08);
+    --shadow-gold: 0 8px 24px rgba(212, 168, 87, 0.25);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: var(--paper); color: var(--text); font-family: var(--font-body); line-height: 1.5; -webkit-font-smoothing: antialiased; }
+  a { color: inherit; text-decoration: none; }
+  button { font-family: inherit; cursor: pointer; border: none; background: none; color: inherit; }
+  input, select, textarea { font-family: inherit; }
+
+  /* Urdu mode swaps body font + flips alignment */
+  html[data-lang="ur"] body { font-family: var(--font-urdu); }
+  html[data-lang="ur"] .latin { font-family: var(--font-body); }
+  html[data-lang="ur"] [data-translate] { font-family: var(--font-urdu); line-height: 1.9; }
+
+  /* ------------------------------------------------------------
+     SCREEN ROUTER
+  ------------------------------------------------------------ */
+  .screen { display: none; min-height: 100vh; }
+  .screen.active { display: block; }
+
+  /* Top dev nav (mockup navigation only) */
+  .dev-bar {
+    position: fixed; top: 14px; left: 50%; transform: translateX(-50%);
+    z-index: 200;
+    display: flex; gap: 4px;
+    background: rgba(10,10,10,0.92);
+    border: 1px solid var(--line-2);
+    border-radius: 100px;
+    padding: 5px;
+    backdrop-filter: blur(20px);
+    box-shadow: 0 8px 28px rgba(0,0,0,0.25);
+  }
+  .dev-bar button {
+    color: #c9c9c9;
+    font-size: 11.5px;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    padding: 8px 14px;
+    border-radius: 100px;
+    transition: all 0.2s;
+  }
+  .dev-bar button:hover { color: var(--gold-soft); }
+  .dev-bar button.active {
+    background: linear-gradient(180deg, var(--gold) 0%, var(--gold-deep) 100%);
+    color: #1a1a1a;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.3);
+  }
+  .dev-bar .lang-toggle {
+    margin-left: 8px;
+    border-left: 1px solid var(--line-2);
+    padding-left: 10px;
+    display: flex; gap: 2px;
+  }
+
+  /* ============================================================
+     SCREEN 1 — LOGIN
+  ============================================================ */
+  #login {
+    background: var(--ink);
+    color: #ececec;
+    overflow: hidden;
+    position: relative;
+  }
+  #login::before {
+    content: "";
+    position: absolute; inset: 0;
+    background:
+      radial-gradient(circle at 20% 30%, var(--gold-glow), transparent 50%),
+      radial-gradient(circle at 80% 70%, rgba(212,168,87,0.08), transparent 55%);
+    pointer-events: none;
+  }
+  /* Subtle Islamic geometric pattern overlay */
+  #login::after {
+    content: "";
+    position: absolute; inset: 0;
+    background-image:
+      linear-gradient(45deg, transparent 48%, rgba(212,168,87,0.04) 49%, rgba(212,168,87,0.04) 51%, transparent 52%),
+      linear-gradient(-45deg, transparent 48%, rgba(212,168,87,0.04) 49%, rgba(212,168,87,0.04) 51%, transparent 52%);
+    background-size: 40px 40px;
+    opacity: 0.5;
+    pointer-events: none;
+  }
+
+  .login-wrap {
+    position: relative; z-index: 2;
+    display: grid;
+    grid-template-columns: 1.05fr 1fr;
+    min-height: 100vh;
+  }
+
+  .login-hero {
+    padding: 80px 64px 60px;
+    display: flex; flex-direction: column; justify-content: space-between;
+    border-right: 1px solid var(--line);
+    position: relative;
+  }
+  .login-hero .hero-watermark {
+    position: absolute;
+    right: -80px; top: 50%;
+    transform: translateY(-50%);
+    width: 520px; height: 520px;
+    opacity: 0.08;
+    pointer-events: none;
+    filter: brightness(1.2);
+  }
+  .login-hero .hero-watermark img {
+    width: 100%; height: 100%; object-fit: contain;
+  }
+  .brand-mark {
+    display: flex; align-items: center; gap: 14px;
+    position: relative; z-index: 2;
+  }
+  .brand-emblem {
+    width: 56px; height: 56px;
+    display: flex; align-items: center; justify-content: center;
+    position: relative;
+    flex-shrink: 0;
+  }
+  .brand-emblem img {
+    width: 100%; height: 100%;
+    object-fit: contain;
+    /* The logo is on black; on dark backgrounds it shows naturally,
+       on cream backgrounds we keep it on a soft ink badge */
+  }
+  .brand-emblem.on-light {
+    background: var(--ink);
+    border-radius: 12px;
+    padding: 6px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.12), 0 0 0 1px rgba(212,168,87,0.25);
+  }
+  .brand-text { display: flex; flex-direction: column; }
+  .brand-text .t1 { font-family: var(--font-display); font-size: 21px; font-weight: 600; letter-spacing: 0.02em; color: var(--gold); line-height: 1; }
+  .brand-text .t2 { font-size: 10.5px; letter-spacing: 0.32em; color: #888; text-transform: uppercase; margin-top: 5px; }
+
+  .hero-content { max-width: 520px; position: relative; z-index: 2; }
+  .hero-eyebrow {
+    display: inline-flex; align-items: center; gap: 10px;
+    font-size: 11px; letter-spacing: 0.28em; text-transform: uppercase;
+    color: var(--gold);
+    margin-bottom: 28px;
+  }
+  .hero-eyebrow::before {
+    content: ""; width: 28px; height: 1px; background: var(--gold);
+  }
+  .hero-title {
+    font-family: var(--font-display);
+    font-size: 64px;
+    line-height: 1.05;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+    margin-bottom: 22px;
+  }
+  .hero-title em {
+    font-style: italic;
+    color: var(--gold);
+    font-weight: 400;
+  }
+  .hero-sub {
+    font-size: 15px;
+    line-height: 1.7;
+    color: #b8b8b8;
+    max-width: 460px;
+    margin-bottom: 36px;
+  }
+  .hero-urdu {
+    font-family: var(--font-urdu);
+    font-size: 22px;
+    color: var(--gold-soft);
+    line-height: 2;
+    margin-top: 8px;
+    direction: rtl;
+    text-align: right;
+    max-width: 460px;
+  }
+
+  .hero-foot {
+    display: flex; justify-content: space-between; align-items: flex-end;
+    font-size: 11.5px; color: #777; letter-spacing: 0.06em;
+    position: relative; z-index: 2;
+  }
+  .hero-foot .stat-row { display: flex; gap: 36px; }
+  .hero-foot .stat .num { font-family: var(--font-display); font-size: 28px; color: var(--gold-soft); display: block; line-height: 1; margin-bottom: 4px; }
+  .hero-foot .stat .lbl { text-transform: uppercase; letter-spacing: 0.18em; font-size: 10px; }
+
+  /* Login form panel */
+  .login-panel {
+    padding: 80px 64px;
+    display: flex; flex-direction: column; justify-content: center;
+    background: linear-gradient(180deg, rgba(20,20,20,0.4), rgba(10,10,10,0.6));
+    backdrop-filter: blur(2px);
+  }
+  .login-panel-inner { max-width: 420px; width: 100%; margin: 0 auto; }
+
+  .panel-title {
+    font-family: var(--font-display);
+    font-size: 36px;
+    font-weight: 500;
+    margin-bottom: 6px;
+  }
+  .panel-sub { color: #999; font-size: 14px; margin-bottom: 36px; }
+
+  .seg {
+    display: grid; grid-template-columns: 1fr 1fr;
+    background: var(--ink-3);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 4px;
+    margin-bottom: 28px;
+  }
+  .seg button {
+    padding: 11px;
+    font-size: 12.5px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #888;
+    border-radius: 6px;
+    transition: all 0.2s;
+    font-weight: 500;
+  }
+  .seg button.active {
+    background: var(--gold);
+    color: var(--ink);
+    box-shadow: 0 2px 8px rgba(212,168,87,0.3);
+  }
+
+  .field { margin-bottom: 18px; }
+  .field label {
+    display: block;
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: #888;
+    margin-bottom: 8px;
+    font-weight: 500;
+  }
+  .field input {
+    width: 100%;
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid var(--line-2);
+    color: #fff;
+    padding: 12px 0;
+    font-size: 15px;
+    transition: border-color 0.2s;
+  }
+  .field input:focus { outline: none; border-bottom-color: var(--gold); }
+  .field input::placeholder { color: #555; }
+
+  .login-extras {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 12.5px;
+    margin: 12px 0 28px;
+  }
+  .login-extras label { color: #999; display: flex; align-items: center; gap: 8px; cursor: pointer; }
+  .login-extras label input { accent-color: var(--gold); }
+  .login-extras a { color: var(--gold); }
+
+  .btn-primary {
+    width: 100%;
+    padding: 16px;
+    background: var(--gold);
+    color: var(--ink);
+    font-weight: 600;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    font-size: 12.5px;
+    border-radius: var(--radius);
+    transition: all 0.2s;
+    box-shadow: 0 4px 16px rgba(212,168,87,0.25);
+  }
+  .btn-primary:hover { background: var(--gold-soft); transform: translateY(-1px); box-shadow: 0 6px 22px rgba(212,168,87,0.35); }
+
+  .or-divider {
+    text-align: center; margin: 28px 0;
+    font-size: 11px; letter-spacing: 0.3em; color: #666;
+    text-transform: uppercase;
+    position: relative;
+  }
+  .or-divider::before, .or-divider::after {
+    content: ""; position: absolute; top: 50%; width: 38%; height: 1px; background: var(--line);
+  }
+  .or-divider::before { left: 0; }
+  .or-divider::after { right: 0; }
+
+  .alt-help {
+    text-align: center;
+    color: #888;
+    font-size: 13px;
+  }
+  .alt-help a { color: var(--gold); border-bottom: 1px solid transparent; padding-bottom: 1px; }
+  .alt-help a:hover { border-bottom-color: var(--gold); }
+
+  /* ============================================================
+     SHARED APP SHELL (User + Admin)
+  ============================================================ */
+  .app {
+    display: grid;
+    grid-template-columns: 260px 1fr;
+    min-height: 100vh;
+  }
+
+  /* Sidebar */
+  .sidebar {
+    background: var(--ink);
+    color: #ddd;
+    padding: 28px 22px;
+    border-right: 1px solid var(--line);
+    position: sticky; top: 0;
+    height: 100vh;
+    overflow-y: auto;
+    display: flex; flex-direction: column;
+  }
+  .sidebar .brand-mark { margin-bottom: 36px; }
+  .sidebar .brand-text .t1 { font-size: 17px; }
+  .sidebar .brand-text .t2 { font-size: 9px; letter-spacing: 0.28em; }
+  .sidebar .brand-emblem { width: 46px; height: 46px; }
+
+  .nav-section {
+    margin-bottom: 22px;
+  }
+  .nav-label {
+    font-size: 10px; letter-spacing: 0.24em; text-transform: uppercase;
+    color: #666; padding: 0 12px; margin-bottom: 10px;
+  }
+  .nav a {
+    display: flex; align-items: center; gap: 12px;
+    padding: 11px 12px;
+    border-radius: var(--radius);
+    color: #b8b8b8;
+    font-size: 13.5px;
+    font-weight: 500;
+    transition: all 0.18s;
+    margin-bottom: 2px;
+    position: relative;
+  }
+  .nav a:hover { background: var(--ink-3); color: #fff; }
+  .nav a.active {
+    background: linear-gradient(90deg, rgba(212,168,87,0.15), rgba(212,168,87,0.02));
+    color: var(--gold-soft);
+  }
+  .nav a.active::before {
+    content: ""; position: absolute; left: 0; top: 8px; bottom: 8px; width: 3px;
+    background: var(--gold); border-radius: 0 3px 3px 0;
+  }
+  .nav a svg { width: 17px; height: 17px; flex-shrink: 0; }
+  .nav a .badge {
+    margin-left: auto;
+    background: var(--gold);
+    color: var(--ink);
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 100px;
+  }
+
+  .sidebar-foot {
+    margin-top: auto;
+    padding-top: 22px;
+    border-top: 1px solid var(--line);
+  }
+  .user-chip {
+    display: flex; align-items: center; gap: 11px;
+    padding: 10px 12px;
+    border-radius: var(--radius);
+    transition: background 0.2s;
+    cursor: pointer;
+  }
+  .user-chip:hover { background: var(--ink-3); }
+  .avatar {
+    width: 36px; height: 36px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--gold), var(--gold-deep));
+    display: flex; align-items: center; justify-content: center;
+    color: var(--ink); font-weight: 700; font-size: 14px;
+    flex-shrink: 0;
+  }
+  .user-chip .info { flex: 1; min-width: 0; }
+  .user-chip .name { font-size: 13px; color: #fff; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .user-chip .role { font-size: 11px; color: #777; }
+
+  /* Main content area */
+  .main { padding: 28px 40px 60px; }
+
+  /* Top bar */
+  .topbar {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 32px;
+    padding-bottom: 22px;
+    border-bottom: 1px solid var(--paper-3);
+  }
+  .topbar-left h1 {
+    font-family: var(--font-display);
+    font-size: 34px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    line-height: 1.1;
+  }
+  .topbar-left .crumbs {
+    font-size: 11.5px; letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--gold-deep); margin-bottom: 8px; font-weight: 500;
+  }
+  .topbar-right { display: flex; align-items: center; gap: 12px; }
+
+  .search {
+    display: flex; align-items: center; gap: 10px;
+    background: white;
+    border: 1px solid var(--paper-3);
+    padding: 10px 14px;
+    border-radius: var(--radius);
+    width: 280px;
+    transition: border-color 0.2s;
+  }
+  .search:focus-within { border-color: var(--gold); }
+  .search input { border: none; background: none; outline: none; flex: 1; font-size: 13.5px; color: var(--text); min-width: 0; }
+  .search svg { width: 15px; height: 15px; color: var(--text-muted); flex-shrink: 0; }
+  .search kbd {
+    font-family: var(--font-body); font-size: 10px; color: var(--text-muted);
+    border: 1px solid var(--paper-3); padding: 2px 6px; border-radius: 4px; background: var(--paper-2);
+  }
+  .search-clear {
+    display: none;
+    width: 18px; height: 18px;
+    align-items: center; justify-content: center;
+    border-radius: 50%;
+    background: var(--paper-2);
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 11px;
+    line-height: 1;
+    flex-shrink: 0;
+  }
+  .search-clear:hover { background: var(--ink); color: var(--gold); }
+  .search.has-value .search-clear { display: inline-flex; }
+
+  /* No-results state */
+  .no-results { padding: 40px 16px !important; text-align: center; }
+  .no-results-inner {
+    display: inline-flex; align-items: center; gap: 16px;
+    text-align: left;
+  }
+  .no-results svg {
+    width: 36px; height: 36px;
+    color: var(--gold-deep);
+    background: var(--paper-2);
+    padding: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .nr-title { font-family: var(--font-display); font-size: 18px; font-weight: 600; color: var(--text); }
+  .nr-sub { font-size: 12.5px; color: var(--text-muted); margin-top: 3px; }
+  .nr-sub strong { color: var(--gold-deep); font-weight: 600; }
+
+  /* Highlight matches in cells */
+  .search-hl {
+    background: rgba(212,168,87,0.32);
+    color: var(--gold-deep);
+    border-radius: 2px;
+    padding: 1px 2px;
+    font-weight: 600;
+  }
+
+  .icon-btn {
+    width: 40px; height: 40px;
+    background: white;
+    border: 1px solid var(--paper-3);
+    border-radius: var(--radius);
+    display: inline-flex; align-items: center; justify-content: center;
+    color: var(--text-soft);
+    transition: all 0.2s;
+    position: relative;
+  }
+  .icon-btn:hover { border-color: var(--gold); color: var(--gold-deep); }
+  .icon-btn svg { width: 17px; height: 17px; }
+  .icon-btn .dot {
+    position: absolute; top: 8px; right: 9px;
+    width: 7px; height: 7px; border-radius: 50%; background: var(--danger);
+    border: 2px solid white;
+  }
+
+  /* Stat cards */
+  .stat-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 18px;
+    margin-bottom: 34px;
+  }
+  .stat-card {
+    background: white;
+    border: 1px solid var(--paper-3);
+    border-radius: var(--radius-lg);
+    padding: 22px 22px 20px;
+    position: relative;
+    overflow: hidden;
+    transition: all 0.25s;
+  }
+  .stat-card:hover { border-color: var(--gold); transform: translateY(-2px); box-shadow: var(--shadow-card); }
+  .stat-card .ornament {
+    position: absolute; top: -20px; right: -20px;
+    width: 80px; height: 80px; border-radius: 50%;
+    background: radial-gradient(circle, var(--gold-glow), transparent 70%);
+  }
+  .stat-card .label {
+    font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase;
+    color: var(--text-muted); font-weight: 500; margin-bottom: 14px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .stat-card .label .icon-bg {
+    width: 30px; height: 30px;
+    background: var(--paper-2);
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--gold-deep);
+  }
+  .stat-card .label .icon-bg svg { width: 15px; height: 15px; }
+  .stat-card .value {
+    font-family: var(--font-display);
+    font-size: 38px;
+    font-weight: 600;
+    line-height: 1;
+    letter-spacing: -0.01em;
+  }
+  .stat-card .value .currency { font-size: 18px; color: var(--text-muted); margin-right: 4px; vertical-align: top; }
+  .stat-card .delta {
+    margin-top: 10px;
+    font-size: 12px;
+    color: var(--success);
+    display: flex; align-items: center; gap: 6px;
+  }
+  .stat-card .delta.warn { color: var(--warn); }
+  .stat-card .delta .arrow { font-weight: 700; }
+
+  /* Card */
+  .card {
+    background: white;
+    border: 1px solid var(--paper-3);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+  }
+  .card-head {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--paper-3);
+  }
+  .card-head h2 {
+    font-family: var(--font-display);
+    font-size: 22px;
+    font-weight: 600;
+  }
+  .card-head .sub { font-size: 12.5px; color: var(--text-muted); margin-top: 2px; }
+
+  .btn-secondary {
+    padding: 9px 16px;
+    background: var(--paper-2);
+    border: 1px solid var(--paper-3);
+    color: var(--text);
+    font-size: 12.5px;
+    font-weight: 500;
+    border-radius: var(--radius);
+    display: inline-flex; align-items: center; gap: 8px;
+    transition: all 0.2s;
+  }
+  .btn-secondary:hover { border-color: var(--gold); color: var(--gold-deep); }
+  .btn-secondary svg { width: 14px; height: 14px; }
+
+  .btn-gold {
+    padding: 10px 18px;
+    background: var(--ink);
+    color: var(--gold);
+    font-size: 12px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    font-weight: 600;
+    border-radius: var(--radius);
+    display: inline-flex; align-items: center; gap: 8px;
+    transition: all 0.2s;
+    border: 1px solid var(--ink);
+  }
+  .btn-gold:hover { background: var(--gold); color: var(--ink); border-color: var(--gold); }
+  .btn-gold svg { width: 13px; height: 13px; }
+
+  /* User dashboard specific */
+  .dash-grid {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 22px;
+    margin-bottom: 22px;
+  }
+
+  /* Year payment grid */
+  .month-grid {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 10px;
+    padding: 22px 24px 24px;
+  }
+  .month-cell {
+    aspect-ratio: 1.2;
+    border: 1px solid var(--paper-3);
+    border-radius: var(--radius);
+    padding: 12px 10px;
+    display: flex; flex-direction: column; justify-content: space-between;
+    position: relative;
+    transition: all 0.2s;
+    cursor: pointer;
+  }
+  .month-cell:hover { transform: translateY(-2px); box-shadow: var(--shadow-soft); }
+  .month-cell .m-name {
+    font-size: 10.5px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    font-weight: 600;
+  }
+  .month-cell .m-amt {
+    font-family: var(--font-display);
+    font-size: 19px;
+    font-weight: 600;
+  }
+  .month-cell .m-status {
+    position: absolute; top: 11px; right: 11px;
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--paper-3);
+  }
+  .month-cell.paid {
+    background: linear-gradient(135deg, #fefcf6, var(--paper));
+    border-color: var(--gold);
+  }
+  .month-cell.paid .m-status { background: var(--gold); box-shadow: 0 0 0 3px rgba(212,168,87,0.2); }
+  .month-cell.pending {
+    background: var(--warn-bg);
+    border-color: #efbf86;
+  }
+  .month-cell.pending .m-status { background: var(--warn); }
+  .month-cell.future {
+    background: var(--paper-2);
+    color: var(--text-muted);
+    cursor: default;
+  }
+  .month-cell.future .m-amt { color: var(--text-muted); font-weight: 400; }
+
+  /* Skipped month — neutral grey with strike */
+  .month-cell.skipped {
+    background: white;
+    border-color: var(--paper-3);
+    border-style: dashed;
+  }
+  .month-cell.skipped .m-amt {
+    color: var(--text-muted);
+    text-decoration: line-through;
+    text-decoration-thickness: 1.5px;
+    font-weight: 400;
+  }
+  .month-cell.skipped .m-status {
+    background: transparent;
+    border: 1.5px solid var(--text-muted);
+  }
+  .month-cell.skipped .m-tag {
+    position: absolute; bottom: 8px; left: 10px;
+    font-size: 9px; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--text-muted); font-weight: 600;
+  }
+
+  /* Over-paid month — gold ring + plus badge */
+  .month-cell.bonus {
+    background: linear-gradient(135deg, #fefcf6, var(--paper-2));
+    border-color: var(--gold);
+    box-shadow: 0 0 0 1px rgba(212,168,87,0.2);
+  }
+  .month-cell.bonus .m-status {
+    background: var(--gold);
+    box-shadow: 0 0 0 3px rgba(212,168,87,0.2);
+  }
+  .month-cell.bonus .m-tag {
+    position: absolute; bottom: 8px; left: 10px;
+    font-size: 9px; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--gold-deep); font-weight: 700;
+    display: flex; align-items: center; gap: 3px;
+  }
+  .m-tag-admin {
+    position: absolute; bottom: 8px; left: 10px;
+    font-size: 8.5px; letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--gold-deep); font-weight: 700;
+    display: inline-flex; align-items: center; gap: 3px;
+    background: var(--ink); color: var(--gold);
+    padding: 2px 6px; border-radius: 100px;
+  }
+  .m-tag-admin svg { width: 8px; height: 8px; }
+
+  /* Legend */
+  .legend {
+    display: flex; flex-wrap: wrap; gap: 18px;
+    padding: 0 24px 22px;
+    margin-top: -4px;
+    border-top: 1px dashed var(--paper-3);
+    padding-top: 16px;
+    margin-left: 24px;
+    margin-right: 24px;
+  }
+  .legend-item {
+    display: inline-flex; align-items: center; gap: 7px;
+    font-size: 11.5px;
+    color: var(--text-muted);
+    font-weight: 500;
+  }
+  .lg-dot {
+    width: 10px; height: 10px;
+    border-radius: 3px;
+    border: 1px solid var(--paper-3);
+  }
+  .lg-dot.lg-paid { background: var(--gold); border-color: var(--gold); }
+  .lg-dot.lg-bonus { background: var(--gold); border: 2px solid var(--gold-deep); }
+  .lg-dot.lg-pending { background: var(--warn-bg); border-color: var(--warn); }
+  .lg-dot.lg-skip { background: white; border: 1.5px dashed var(--text-muted); }
+  .lg-dot.lg-future { background: var(--paper-2); }
+
+  /* Right column quick action card */
+  .quick-pay {
+    background: linear-gradient(165deg, var(--ink) 0%, var(--ink-3) 100%);
+    color: #ececec;
+    border-radius: var(--radius-lg);
+    padding: 26px;
+    position: relative;
+    overflow: hidden;
+  }
+  .quick-pay::before {
+    content: ""; position: absolute; top: -40px; right: -40px;
+    width: 160px; height: 160px;
+    background: radial-gradient(circle, var(--gold-glow), transparent 70%);
+    pointer-events: none;
+  }
+  .qp-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 5px;
+    position: relative; z-index: 1;
+  }
+  .quick-pay h3 {
+    font-family: var(--font-display);
+    font-size: 24px;
+    font-weight: 500;
+    color: var(--gold);
+  }
+  .qp-month-pill {
+    font-size: 10.5px; letter-spacing: 0.2em;
+    background: rgba(212,168,87,0.12);
+    color: var(--gold);
+    border: 1px solid rgba(212,168,87,0.3);
+    padding: 4px 10px;
+    border-radius: 100px;
+    font-weight: 600;
+  }
+  .quick-pay p { font-size: 13px; color: #aaa; margin-bottom: 22px; line-height: 1.6; position: relative; z-index: 1; }
+
+  /* Mode selector tabs */
+  .qp-modes {
+    display: grid; grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    background: rgba(0,0,0,0.3);
+    padding: 6px;
+    border-radius: var(--radius);
+    border: 1px solid var(--line);
+    margin-bottom: 22px;
+    position: relative; z-index: 1;
+  }
+  .qp-mode {
+    padding: 11px 8px;
+    border-radius: 6px;
+    color: #888;
+    transition: all 0.2s;
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+  }
+  .qp-mode:hover { color: #ddd; background: rgba(255,255,255,0.03); }
+  .qp-mode.active {
+    background: linear-gradient(180deg, rgba(212,168,87,0.18), rgba(212,168,87,0.06));
+    color: var(--gold);
+    box-shadow: inset 0 0 0 1px rgba(212,168,87,0.4);
+  }
+  .qp-mode-top {
+    display: flex; align-items: center; gap: 6px;
+  }
+  .qp-mode-top svg { width: 13px; height: 13px; }
+  .qp-mode-amt {
+    font-family: var(--font-display);
+    font-size: 16px;
+    font-weight: 600;
+  }
+  .qp-mode-label {
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    font-weight: 500;
+  }
+
+  /* Panels (only one active) */
+  .qp-panel { display: none; position: relative; z-index: 1; }
+  .qp-panel.active { display: block; animation: qpFadeIn 0.25s ease; }
+  @keyframes qpFadeIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .qp-row {
+    display: flex; justify-content: space-between;
+    padding: 13px 0;
+    border-top: 1px solid var(--line);
+    font-size: 13.5px;
+  }
+  .qp-row:first-of-type { border-top: none; }
+  .qp-row .k { color: #888; }
+  .qp-row .v { color: #fff; font-weight: 500; }
+  .qp-row .v.gold { color: var(--gold); font-family: var(--font-display); font-size: 18px; }
+
+  /* Custom amount input */
+  .qp-amount-input {
+    display: flex; align-items: baseline; gap: 4px;
+    padding: 14px 0 16px;
+    border-bottom: 1px solid var(--line);
+    margin-bottom: 16px;
+  }
+  .qp-currency {
+    font-family: var(--font-display);
+    font-size: 26px;
+    color: var(--gold);
+    font-weight: 500;
+  }
+  .qp-amount-input input {
+    background: transparent;
+    border: none;
+    color: var(--gold);
+    font-family: var(--font-display);
+    font-size: 42px;
+    font-weight: 600;
+    width: 100%;
+    outline: none;
+    padding: 0;
+    letter-spacing: -0.01em;
+  }
+  .qp-amount-input input::-webkit-outer-spin-button,
+  .qp-amount-input input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  .qp-amount-input input { -moz-appearance: textfield; }
+
+  /* Preset chips */
+  .qp-presets {
+    display: flex; gap: 6px; flex-wrap: wrap;
+    margin-bottom: 18px;
+  }
+  .qp-preset {
+    padding: 7px 12px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid var(--line);
+    border-radius: 100px;
+    color: #bbb;
+    font-size: 12px;
+    font-weight: 500;
+    transition: all 0.2s;
+  }
+  .qp-preset:hover { border-color: var(--gold-deep); color: var(--gold-soft); }
+  .qp-preset.active {
+    background: var(--gold);
+    color: var(--ink);
+    border-color: var(--gold);
+    font-weight: 600;
+  }
+
+  .qp-cat-label {
+    display: block;
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: #888;
+    margin-bottom: 8px;
+    font-weight: 500;
+  }
+  .qp-allocate { margin-bottom: 14px; }
+  .qp-select {
+    width: 100%;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid var(--line);
+    color: #fff;
+    padding: 11px 14px;
+    border-radius: var(--radius);
+    font-size: 13.5px;
+    cursor: pointer;
+    appearance: none;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23999' stroke-width='2'><polyline points='6 9 12 15 18 9'/></svg>");
+    background-repeat: no-repeat;
+    background-position: right 14px center;
+  }
+  .qp-select:focus { outline: none; border-color: var(--gold); }
+  .qp-select option { background: var(--ink-3); color: #fff; }
+
+  .qp-note-row {
+    display: flex; justify-content: space-between;
+    padding: 13px 0;
+    border-top: 1px solid var(--line);
+    margin-top: 6px;
+    font-size: 13px;
+  }
+  .qp-note-row .k { color: #888; }
+  .qp-note-row .v.gold { color: var(--gold); font-family: var(--font-display); font-size: 17px; font-weight: 600; }
+
+  /* Skip panel */
+  .qp-skip-warn {
+    display: flex; gap: 11px;
+    padding: 13px;
+    background: rgba(201, 122, 44, 0.1);
+    border: 1px solid rgba(201, 122, 44, 0.25);
+    border-radius: var(--radius);
+    margin-bottom: 20px;
+  }
+  .qp-skip-warn svg {
+    width: 18px; height: 18px;
+    color: var(--warn);
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+  .qp-skip-warn span {
+    font-size: 12.5px;
+    color: #c8c0b0;
+    line-height: 1.55;
+  }
+
+  .quick-pay .btn-primary,
+  .qp-panel .btn-primary {
+    margin-top: 20px;
+  }
+    width: 100%;
+    margin-top: 16px;
+    padding: 15px;
+    background: transparent;
+    color: #e8c989;
+    font-weight: 500;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    font-size: 12px;
+    border: 1px solid var(--gold-deep);
+    border-radius: var(--radius);
+    transition: all 0.2s;
+  }
+  .btn-skip:hover { background: rgba(212,168,87,0.08); border-color: var(--gold); }
+
+  .btn-text {
+    width: 100%;
+    margin-top: 8px;
+    padding: 10px;
+    background: transparent;
+    color: #888;
+    font-size: 12px;
+    transition: color 0.2s;
+  }
+  .btn-text:hover { color: #ddd; }
+
+  /* Receipts list */
+  .receipts {
+    padding: 8px 8px 8px;
+  }
+  .receipt-row {
+    display: grid;
+    grid-template-columns: 36px 1fr auto auto;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 16px;
+    border-radius: var(--radius);
+    transition: background 0.18s;
+  }
+  .receipt-row:hover { background: var(--paper); }
+  .receipt-icon {
+    width: 36px; height: 36px;
+    background: var(--paper-2);
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--gold-deep);
+  }
+  .receipt-icon svg { width: 16px; height: 16px; }
+  .receipt-meta .t { font-size: 13.5px; font-weight: 500; }
+  .receipt-meta .s { font-size: 11.5px; color: var(--text-muted); margin-top: 2px; }
+  .receipt-amt { font-family: var(--font-display); font-size: 18px; font-weight: 600; }
+  .receipt-action {
+    width: 32px; height: 32px;
+    border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--text-muted);
+    transition: all 0.2s;
+  }
+  .receipt-action:hover { background: var(--ink); color: var(--gold); }
+  .receipt-action svg { width: 14px; height: 14px; }
+
+  /* Profile strip */
+  .profile-strip {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 24px;
+    align-items: center;
+    padding: 24px;
+    background: linear-gradient(135deg, var(--paper-2), var(--paper));
+    border: 1px solid var(--paper-3);
+    border-radius: var(--radius-lg);
+    margin-bottom: 22px;
+    position: relative;
+    overflow: hidden;
+  }
+  .profile-strip::before {
+    content: ""; position: absolute; top: 0; right: 0; bottom: 0; width: 200px;
+    background: radial-gradient(circle at right, var(--gold-glow), transparent 65%);
+  }
+  .profile-avatar {
+    width: 72px; height: 72px;
+    background: linear-gradient(135deg, var(--gold), var(--gold-deep));
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--ink);
+    font-family: var(--font-display);
+    font-size: 28px;
+    font-weight: 700;
+    box-shadow: var(--shadow-gold);
+  }
+  .profile-info .pid { font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--gold-deep); font-weight: 600; margin-bottom: 4px; }
+  .profile-info .pname { font-family: var(--font-display); font-size: 26px; font-weight: 600; line-height: 1.2; }
+  .profile-info .pdesig { font-size: 13px; color: var(--text-muted); margin-top: 2px; }
+  .profile-meta { text-align: right; position: relative; z-index: 1; }
+  .profile-meta .ml { font-size: 11px; color: var(--text-muted); letter-spacing: 0.15em; text-transform: uppercase; margin-bottom: 4px; }
+  .profile-meta .mv { font-family: var(--font-display); font-size: 24px; font-weight: 600; color: var(--text); }
+
+  /* ============================================================
+     ADMIN DASHBOARD specific
+  ============================================================ */
+  /* Filter row */
+  .filter-row {
+    display: flex; gap: 10px; flex-wrap: wrap;
+    margin-bottom: 22px;
+  }
+  .chip {
+    padding: 8px 14px;
+    background: white;
+    border: 1px solid var(--paper-3);
+    border-radius: 100px;
+    font-size: 12.5px;
+    font-weight: 500;
+    color: var(--text-soft);
+    transition: all 0.2s;
+    cursor: pointer;
+    display: inline-flex; align-items: center; gap: 7px;
+  }
+  .chip:hover { border-color: var(--gold); }
+  .chip.active { background: var(--ink); color: var(--gold); border-color: var(--ink); }
+  .chip .ct {
+    background: var(--paper-2); color: var(--text-muted);
+    font-size: 10.5px; padding: 1px 7px; border-radius: 100px; font-weight: 600;
+  }
+  .chip.active .ct { background: var(--gold); color: var(--ink); }
+
+  /* Members table */
+  .table-wrap {
+    overflow-x: auto;
+  }
+  table.members {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13.5px;
+  }
+  table.members thead {
+    background: var(--paper-2);
+  }
+  table.members th {
+    text-align: left;
+    font-size: 10.5px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    font-weight: 600;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--paper-3);
+    white-space: nowrap;
+  }
+  table.members td {
+    padding: 16px;
+    border-bottom: 1px solid var(--paper-3);
+    vertical-align: middle;
+  }
+  table.members tbody tr { transition: background 0.15s; }
+  table.members tbody tr:hover { background: var(--paper); }
+  table.members .sr {
+    font-family: var(--font-display);
+    font-weight: 600;
+    color: var(--gold-deep);
+    font-size: 14px;
+  }
+  table.members .member-cell {
+    display: flex; align-items: center; gap: 12px;
+  }
+  table.members .mini-avatar {
+    width: 34px; height: 34px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--gold-soft), var(--gold-deep));
+    color: var(--ink);
+    font-weight: 700;
+    font-size: 12.5px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  table.members .member-cell .nm { font-weight: 500; }
+  table.members .member-cell .em { font-size: 11.5px; color: var(--text-muted); }
+  table.members .desig {
+    display: inline-block;
+    padding: 4px 10px;
+    background: var(--paper-2);
+    border-radius: 100px;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text-soft);
+  }
+  table.members .desig.gold {
+    background: var(--ink);
+    color: var(--gold);
+  }
+  table.members .amt { font-family: var(--font-display); font-size: 16px; font-weight: 600; }
+  table.members .progress-cell { width: 160px; }
+  .progress {
+    height: 6px;
+    background: var(--paper-3);
+    border-radius: 100px;
+    overflow: hidden;
+    margin-bottom: 4px;
+  }
+  .progress > span {
+    display: block; height: 100%;
+    background: linear-gradient(90deg, var(--gold-deep), var(--gold));
+    border-radius: 100px;
+  }
+  .progress-meta {
+    font-size: 11px;
+    color: var(--text-muted);
+    display: flex; justify-content: space-between;
+  }
+  .status-pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 10px;
+    border-radius: 100px;
+    font-size: 11.5px;
+    font-weight: 500;
+  }
+  .status-pill::before {
+    content: ""; width: 6px; height: 6px; border-radius: 50%;
+  }
+  .status-pill.ok { background: var(--success-bg); color: var(--success); }
+  .status-pill.ok::before { background: var(--success); }
+  .status-pill.warn { background: var(--warn-bg); color: var(--warn); }
+  .status-pill.warn::before { background: var(--warn); }
+  .status-pill.danger { background: var(--danger-bg); color: var(--danger); }
+  .status-pill.danger::before { background: var(--danger); }
+  .row-actions { display: flex; gap: 4px; }
+  .row-actions .icon-btn { width: 32px; height: 32px; }
+  .row-actions .icon-btn svg { width: 14px; height: 14px; }
+
+  /* Admin top metrics use same .stat-grid */
+
+  /* Pagination */
+  .table-foot {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 16px 24px;
+    border-top: 1px solid var(--paper-3);
+    font-size: 12.5px;
+    color: var(--text-muted);
+  }
+  .pager { display: flex; gap: 4px; }
+  .pager button {
+    width: 32px; height: 32px;
+    background: white;
+    border: 1px solid var(--paper-3);
+    border-radius: 6px;
+    color: var(--text-soft);
+    font-size: 12.5px;
+    transition: all 0.2s;
+  }
+  .pager button:hover { border-color: var(--gold); }
+  .pager button.active { background: var(--ink); color: var(--gold); border-color: var(--ink); }
+
+  /* ============================================================
+     MODAL — Record Payment
+  ============================================================ */
+  .modal-overlay {
+    position: fixed; inset: 0;
+    background: rgba(10,10,10,0.6);
+    backdrop-filter: blur(6px);
+    display: none;
+    align-items: center; justify-content: center;
+    z-index: 300;
+    padding: 24px;
+    animation: ovFade 0.2s ease;
+  }
+  .modal-overlay.open { display: flex; }
+  @keyframes ovFade { from { opacity: 0; } to { opacity: 1; } }
+
+  .modal {
+    width: 100%;
+    max-width: 720px;
+    max-height: calc(100vh - 48px);
+    background: var(--paper);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 30px 80px rgba(0,0,0,0.4), 0 0 0 1px rgba(212,168,87,0.15);
+    overflow: hidden;
+    display: flex; flex-direction: column;
+    animation: mSlide 0.25s cubic-bezier(0.2, 0.7, 0.3, 1);
+  }
+  @keyframes mSlide {
+    from { opacity: 0; transform: translateY(20px) scale(0.98); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+  }
+
+  .modal-head {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    padding: 24px 28px 20px;
+    background: linear-gradient(135deg, var(--ink) 0%, var(--ink-3) 100%);
+    color: #ececec;
+    position: relative;
+    overflow: hidden;
+  }
+  .modal-head::before {
+    content: ""; position: absolute; top: -40px; right: -40px;
+    width: 200px; height: 200px;
+    background: radial-gradient(circle, var(--gold-glow), transparent 70%);
+    pointer-events: none;
+  }
+  .modal-head-l { position: relative; z-index: 1; }
+  .modal-eyebrow {
+    font-size: 10.5px;
+    letter-spacing: 0.24em;
+    text-transform: uppercase;
+    color: var(--gold);
+    margin-bottom: 6px;
+    font-weight: 600;
+  }
+  .modal-head h2 {
+    font-family: var(--font-display);
+    font-size: 28px;
+    font-weight: 600;
+    color: #fff;
+  }
+  .modal-close {
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    color: #aaa;
+    border: 1px solid var(--line-2);
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.2s;
+    position: relative; z-index: 1;
+  }
+  .modal-close:hover { background: rgba(255,255,255,0.08); color: #fff; }
+  .modal-close svg { width: 16px; height: 16px; }
+
+  .modal-body {
+    padding: 26px 28px 8px;
+    overflow-y: auto;
+  }
+
+  /* Member identity strip inside modal */
+  .rp-member {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 16px;
+    align-items: center;
+    padding: 14px 16px;
+    background: white;
+    border: 1px solid var(--paper-3);
+    border-radius: var(--radius);
+    margin-bottom: 22px;
+  }
+  .rp-member .mini-avatar.lg {
+    width: 46px; height: 46px;
+    font-size: 16px;
+  }
+  .rp-member-name {
+    font-family: var(--font-display);
+    font-size: 19px;
+    font-weight: 600;
+    line-height: 1.1;
+  }
+  .rp-member-sub {
+    font-size: 12.5px;
+    color: var(--text-muted);
+    margin-top: 3px;
+  }
+  .rp-attribution {
+    text-align: right;
+    border-left: 1px solid var(--paper-3);
+    padding-left: 16px;
+  }
+  .rp-att-label {
+    font-size: 9.5px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--gold-deep);
+    font-weight: 600;
+    margin-bottom: 4px;
+  }
+  .rp-att-name {
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .rp-att-role {
+    display: inline-block;
+    font-size: 10px;
+    padding: 1px 7px;
+    background: var(--paper-2);
+    border-radius: 100px;
+    color: var(--text-soft);
+    font-weight: 500;
+    margin-left: 4px;
+    letter-spacing: 0.04em;
+  }
+
+  /* Form grid */
+  .form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px 18px;
+    margin-bottom: 22px;
+  }
+  .form-field { display: flex; flex-direction: column; }
+  .form-field.span-2 { grid-column: 1 / -1; }
+  .form-field label {
+    font-size: 11px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+    font-weight: 600;
+  }
+  .form-select {
+    width: 100%;
+    background: white;
+    border: 1px solid var(--paper-3);
+    color: var(--text);
+    padding: 11px 14px;
+    border-radius: var(--radius);
+    font-size: 14px;
+    font-family: inherit;
+    appearance: none;
+    transition: border-color 0.2s;
+  }
+  select.form-select {
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23999' stroke-width='2'><polyline points='6 9 12 15 18 9'/></svg>");
+    background-repeat: no-repeat;
+    background-position: right 14px center;
+    cursor: pointer;
+    padding-right: 36px;
+  }
+  .form-select:focus { outline: none; border-color: var(--gold); box-shadow: 0 0 0 3px rgba(212,168,87,0.12); }
+
+  /* Amount input row */
+  .amt-input-row {
+    display: flex; align-items: stretch; gap: 8px;
+    background: white;
+    border: 1px solid var(--paper-3);
+    border-radius: var(--radius);
+    padding: 8px 12px;
+  }
+  .amt-input-row:focus-within { border-color: var(--gold); box-shadow: 0 0 0 3px rgba(212,168,87,0.12); }
+  .amt-prefix {
+    font-family: var(--font-display);
+    font-size: 22px;
+    color: var(--gold-deep);
+    align-self: center;
+    font-weight: 500;
+  }
+  .amt-input-row input {
+    flex: 1;
+    border: none;
+    background: transparent;
+    outline: none;
+    font-family: var(--font-display);
+    font-size: 24px;
+    font-weight: 600;
+    color: var(--text);
+    min-width: 0;
+  }
+  .amt-input-row input::-webkit-outer-spin-button,
+  .amt-input-row input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  .amt-input-row input { -moz-appearance: textfield; }
+  .amt-presets {
+    display: flex; gap: 4px;
+    align-items: center;
+    border-left: 1px solid var(--paper-3);
+    padding-left: 8px;
+  }
+  .amt-preset {
+    padding: 6px 10px;
+    background: var(--paper-2);
+    border: 1px solid transparent;
+    border-radius: 6px;
+    color: var(--text-soft);
+    font-size: 12px;
+    font-weight: 500;
+    transition: all 0.18s;
+  }
+  .amt-preset:hover { border-color: var(--gold); color: var(--gold-deep); }
+  .amt-preset.active {
+    background: var(--ink);
+    color: var(--gold);
+    border-color: var(--ink);
+  }
+
+  /* Method grid */
+  .method-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
+  }
+  .method-btn {
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+    padding: 12px 6px 10px;
+    background: white;
+    border: 1px solid var(--paper-3);
+    border-radius: var(--radius);
+    color: var(--text-soft);
+    font-size: 11.5px;
+    font-weight: 500;
+    transition: all 0.18s;
+  }
+  .method-btn svg { width: 18px; height: 18px; }
+  .method-btn:hover { border-color: var(--gold); color: var(--gold-deep); }
+  .method-btn.active {
+    background: var(--ink);
+    color: var(--gold);
+    border-color: var(--ink);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  }
+
+  /* Checkbox */
+  .checkbox {
+    display: flex; align-items: flex-start; gap: 10px;
+    padding: 12px 14px;
+    background: white;
+    border: 1px solid var(--paper-3);
+    border-radius: var(--radius);
+    cursor: pointer;
+    font-size: 13.5px;
+    color: var(--text-soft);
+    text-transform: none;
+    letter-spacing: 0;
+    margin-bottom: 0;
+    font-weight: 400;
+  }
+  .checkbox input { accent-color: var(--gold); margin-top: 2px; flex-shrink: 0; }
+  .checkbox strong { color: var(--text); font-weight: 600; }
+
+  /* Preview card */
+  .rp-preview {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 18px;
+    align-items: center;
+    padding: 18px 20px;
+    background: linear-gradient(135deg, #fdf9ee, var(--paper-2));
+    border: 1px solid var(--gold-deep);
+    border-style: dashed;
+    border-radius: var(--radius);
+    margin-bottom: 8px;
+  }
+  .rp-preview-label {
+    font-size: 10.5px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--gold-deep);
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+  .rp-preview-line {
+    display: flex; align-items: center; gap: 10px;
+    flex-wrap: wrap;
+    font-size: 14px;
+    margin-bottom: 4px;
+  }
+  .rp-preview-line strong { font-family: var(--font-display); font-size: 17px; font-weight: 600; }
+  .rp-attrib-pill {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 3px 9px;
+    background: var(--ink);
+    color: var(--gold);
+    border-radius: 100px;
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    font-weight: 600;
+  }
+  .rp-preview-meta {
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+  .rp-preview-amt {
+    font-family: var(--font-display);
+    font-size: 32px;
+    font-weight: 700;
+    color: var(--gold-deep);
+    line-height: 1;
+  }
+
+  /* Modal foot */
+  .modal-foot {
+    display: flex; justify-content: flex-end; gap: 10px;
+    padding: 18px 28px 22px;
+    border-top: 1px solid var(--paper-3);
+    background: white;
+  }
+  .modal-primary {
+    width: auto;
+    margin: 0;
+    padding: 12px 24px;
+  }
+
+  @media (max-width: 720px) {
+    .modal-overlay { padding: 0; align-items: flex-end; }
+    .modal { max-height: 92vh; border-radius: 16px 16px 0 0; }
+    .modal-head { padding: 20px 22px 16px; }
+    .modal-head h2 { font-size: 22px; }
+    .modal-body { padding: 20px 22px 8px; }
+    .modal-foot { padding: 14px 22px 20px; flex-wrap: wrap; }
+    .form-grid { grid-template-columns: 1fr; }
+    .form-field.span-2 { grid-column: 1; }
+    .rp-member { grid-template-columns: auto 1fr; }
+    .rp-attribution { grid-column: 1 / -1; border-left: none; padding-left: 0; padding-top: 12px; border-top: 1px solid var(--paper-3); text-align: left; }
+    .method-grid { grid-template-columns: repeat(2, 1fr); }
+    .amt-presets { display: none; }
+    .modal-foot .btn-secondary:nth-child(2) { display: none; }
+  }
+
+  /* Indicator on user-side: payments recorded by admin */
+  .recorded-by-admin {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 2px 7px;
+    background: var(--ink);
+    color: var(--gold);
+    border-radius: 100px;
+    font-size: 9.5px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    font-weight: 600;
+    margin-left: 8px;
+    vertical-align: middle;
+  }
+  .recorded-by-admin svg { width: 9px; height: 9px; }
+
+  /* Notification banner on user dashboard */
+  .new-entry-banner {
+    display: flex; align-items: center; gap: 14px;
+    padding: 14px 18px;
+    background: linear-gradient(135deg, #fdf9ee, var(--paper-2));
+    border: 1px solid var(--gold);
+    border-radius: var(--radius);
+    margin-bottom: 22px;
+    position: relative;
+    overflow: hidden;
+  }
+  .new-entry-banner::before {
+    content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+    background: var(--gold);
+  }
+  .new-entry-banner .neb-icon {
+    width: 36px; height: 36px;
+    background: var(--ink);
+    color: var(--gold);
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .new-entry-banner .neb-icon svg { width: 16px; height: 16px; }
+  .new-entry-banner .neb-text { flex: 1; font-size: 13.5px; color: var(--text); line-height: 1.5; }
+  .new-entry-banner .neb-text strong { color: var(--gold-deep); font-weight: 600; }
+  .new-entry-banner .neb-close {
+    width: 28px; height: 28px;
+    color: var(--text-muted);
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .new-entry-banner .neb-close:hover { background: white; color: var(--text); }
+  .new-entry-banner .neb-close svg { width: 14px; height: 14px; }
+
+  /* ============================================================
+     RESPONSIVE — Tablet
+  ============================================================ */
+  @media (max-width: 1100px) {
+    .stat-grid { grid-template-columns: repeat(2, 1fr); }
+    .dash-grid { grid-template-columns: 1fr; }
+    .month-grid { grid-template-columns: repeat(4, 1fr); }
+  }
+
+  /* ============================================================
+     MOBILE APP EXPERIENCE — < 880px
+     The web app transforms into a native-feeling mobile app:
+       - Sidebar replaced with bottom tab bar
+       - Topbar replaced with app-style header
+       - Cards expand edge-to-edge with rounded tops
+       - Tables become card lists
+       - FAB for primary action
+       - Safe-area padding for notched devices
+  ============================================================ */
+  @media (max-width: 880px) {
+    /* Slightly warmer paper feel like an app surface */
+    body {
+      background: var(--paper);
+      -webkit-tap-highlight-color: transparent;
+    }
+    /* Prevent overscroll bounce showing white on iOS */
+    html { background: var(--ink); }
+
+    /* --- LOGIN: form-first, hero condensed to a header banner --- */
+    .login-wrap { grid-template-columns: 1fr; min-height: 100dvh; }
+    .login-hero {
+      padding: 38px 24px 32px;
+      border-right: none;
+      border-bottom: 1px solid var(--line);
+      min-height: auto;
+      justify-content: flex-start;
+      gap: 24px;
+    }
+    .login-hero .hero-watermark {
+      width: 280px; height: 280px;
+      right: -100px; top: 30%;
+      opacity: 0.06;
+    }
+    .login-hero .brand-mark { gap: 11px; }
+    .login-hero .brand-emblem { width: 44px; height: 44px; }
+    .login-hero .brand-text .t1 { font-size: 17px; }
+    .login-hero .brand-text .t2 { font-size: 9px; letter-spacing: 0.24em; }
+    .hero-eyebrow { margin-bottom: 14px; font-size: 10px; }
+    .hero-title { font-size: 32px; margin-bottom: 12px; line-height: 1.1; }
+    .hero-sub { font-size: 13.5px; margin-bottom: 0; }
+    .hero-urdu { font-size: 17px; margin-top: 10px; }
+    .hero-foot { display: none; }
+    .login-panel { padding: 28px 24px 48px; min-height: auto; }
+    .login-panel-inner { max-width: none; }
+    .panel-title { font-size: 28px; }
+    .seg button { padding: 13px 11px; font-size: 12px; }
+    .field input { font-size: 16px; padding: 14px 0; } /* 16px prevents iOS zoom */
+    .btn-primary { padding: 17px; font-size: 13px; }
+
+    /* --- APP SHELL: convert sidebar to bottom tab bar --- */
+    .app {
+      grid-template-columns: 1fr;
+      min-height: 100dvh;
+      padding-bottom: 78px; /* room for bottom tab bar */
+    }
+
+    .sidebar {
+      /* Hide the desktop sidebar entirely; replaced by bottom-tab + slide-over drawer */
+      position: fixed; left: -300px; top: 0; bottom: 0; z-index: 250;
+      width: 280px;
+      transition: left 0.28s cubic-bezier(0.2, 0.7, 0.3, 1);
+      box-shadow: 0 0 30px rgba(0,0,0,0.4);
+    }
+    .sidebar.open { left: 0; }
+
+    /* Backdrop when drawer open */
+    .drawer-backdrop {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(10,10,10,0.45);
+      backdrop-filter: blur(2px);
+      z-index: 240;
+    }
+    .drawer-backdrop.open { display: block; animation: ovFade 0.2s ease; }
+
+    /* --- MOBILE APP HEADER --- */
+    .main {
+      padding: 0 0 28px;
+    }
+    .topbar {
+      display: none; /* desktop topbar hidden */
+    }
+    .mob-app-header {
+      display: flex !important;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 18px 14px;
+      padding-top: calc(14px + env(safe-area-inset-top, 0px));
+      background: linear-gradient(180deg, var(--ink) 0%, var(--ink-3) 100%);
+      color: #fff;
+      position: sticky; top: 0; z-index: 80;
+      border-bottom: 1px solid var(--line);
+    }
+    .mah-l {
+      display: flex; align-items: center; gap: 11px;
+      flex: 1; min-width: 0;
+    }
+    .mah-emblem {
+      width: 38px; height: 38px;
+      flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .mah-emblem img { width: 100%; height: 100%; object-fit: contain; }
+    .mah-greet { min-width: 0; flex: 1; }
+    .mah-greet .g1 { font-size: 10.5px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--gold); font-weight: 600; line-height: 1; margin-bottom: 3px; }
+    .mah-greet .g2 { font-family: var(--font-display); font-size: 19px; font-weight: 600; color: #fff; line-height: 1.1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .mah-r { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+    .mah-icon {
+      width: 38px; height: 38px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid var(--line-2);
+      color: #ccc;
+      display: flex; align-items: center; justify-content: center;
+      position: relative;
+    }
+    .mah-icon:active { background: rgba(212,168,87,0.15); }
+    .mah-icon svg { width: 16px; height: 16px; }
+    .mah-icon .dot {
+      position: absolute; top: 8px; right: 9px;
+      width: 7px; height: 7px; border-radius: 50%;
+      background: var(--gold);
+      border: 2px solid var(--ink);
+    }
+
+    /* Page title strip below header */
+    .mob-page-title {
+      display: block !important;
+      padding: 18px 18px 6px;
+    }
+    .mob-page-title .crumbs {
+      font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase;
+      color: var(--gold-deep); font-weight: 600;
+      margin-bottom: 4px;
+    }
+    .mob-page-title h1 {
+      font-family: var(--font-display);
+      font-size: 26px;
+      font-weight: 600;
+      letter-spacing: -0.005em;
+      line-height: 1.15;
+    }
+
+    /* Mobile search bar (sits below header, scrolls with content) */
+    .mob-search-bar {
+      display: flex !important;
+      padding: 8px 18px 14px;
+    }
+    .mob-search-bar .search {
+      width: 100%;
+      padding: 12px 14px;
+      border-radius: 100px; /* pill */
+    }
+
+    /* --- BOTTOM TAB BAR --- */
+    .bottom-tabs {
+      display: flex !important;
+      position: fixed; left: 0; right: 0; bottom: 0; z-index: 90;
+      background: rgba(255, 252, 244, 0.92);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-top: 1px solid var(--paper-3);
+      padding: 8px 6px;
+      padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+      box-shadow: 0 -4px 20px rgba(0,0,0,0.04);
+    }
+    .bt-item {
+      flex: 1;
+      display: flex; flex-direction: column; align-items: center; gap: 3px;
+      padding: 8px 4px;
+      color: var(--text-muted);
+      font-size: 10px;
+      font-weight: 500;
+      letter-spacing: 0.04em;
+      border-radius: 10px;
+      transition: color 0.18s;
+      position: relative;
+    }
+    .bt-item svg { width: 22px; height: 22px; stroke-width: 1.8; transition: transform 0.2s; }
+    .bt-item:active { background: rgba(212,168,87,0.08); }
+    .bt-item:active svg { transform: scale(0.9); }
+    .bt-item.active { color: var(--gold-deep); }
+    .bt-item.active::before {
+      content: ""; position: absolute; top: 4px; left: 50%; transform: translateX(-50%);
+      width: 22px; height: 3px; background: var(--gold);
+      border-radius: 0 0 3px 3px;
+    }
+    .bt-item.active svg { stroke-width: 2.2; }
+    .bt-item .badge {
+      position: absolute; top: 4px; right: calc(50% - 18px);
+      background: var(--gold); color: var(--ink);
+      font-size: 9px; font-weight: 700;
+      min-width: 14px; height: 14px;
+      border-radius: 100px;
+      padding: 0 4px;
+      display: flex; align-items: center; justify-content: center;
+      border: 1.5px solid var(--paper);
+    }
+
+    /* Special center FAB-like tab for primary action */
+    .bt-item.bt-fab {
+      flex: 0 0 auto;
+    }
+    .bt-item.bt-fab .bt-fab-circle {
+      width: 52px; height: 52px;
+      background: linear-gradient(135deg, var(--gold) 0%, var(--gold-deep) 100%);
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      color: var(--ink);
+      margin-top: -22px;
+      box-shadow: 0 6px 20px rgba(212, 168, 87, 0.45), 0 2px 6px rgba(0,0,0,0.1);
+      border: 4px solid var(--paper);
+      transition: transform 0.2s;
+    }
+    .bt-item.bt-fab:active .bt-fab-circle { transform: scale(0.92); }
+    .bt-item.bt-fab .bt-fab-circle svg { width: 22px; height: 22px; stroke-width: 2.2; }
+    .bt-item.bt-fab.active::before { display: none; }
+    .bt-item.bt-fab span { color: var(--gold-deep); font-weight: 600; }
+
+    /* --- USER DASHBOARD CONTENT --- */
+
+    /* Notification banner becomes thinner & flush */
+    .new-entry-banner {
+      margin: 14px 14px 0;
+      padding: 12px 14px;
+      gap: 11px;
+      border-radius: 12px;
+    }
+    .new-entry-banner .neb-icon { width: 32px; height: 32px; }
+    .new-entry-banner .neb-icon svg { width: 14px; height: 14px; }
+    .new-entry-banner .neb-text { font-size: 12.5px; line-height: 1.45; }
+
+    /* Profile strip becomes a hero summary card */
+    .profile-strip {
+      margin: 14px 14px 0;
+      padding: 18px 18px;
+      grid-template-columns: auto 1fr;
+      gap: 14px;
+      border-radius: 14px;
+    }
+    .profile-avatar { width: 56px; height: 56px; font-size: 22px; }
+    .profile-info .pid { font-size: 9.5px; }
+    .profile-info .pname { font-size: 21px; }
+    .profile-info .pdesig { font-size: 12px; }
+    .profile-meta {
+      grid-column: 1 / -1;
+      text-align: left;
+      padding-top: 12px;
+      margin-top: 4px;
+      border-top: 1px solid rgba(212, 168, 87, 0.25);
+      display: flex; justify-content: space-between; align-items: baseline;
+    }
+    .profile-meta .ml { margin-bottom: 0; font-size: 10px; }
+    .profile-meta .mv { font-size: 19px; }
+
+    /* Stats: horizontal scroll snap row */
+    .stat-grid {
+      grid-template-columns: none;
+      display: flex;
+      gap: 12px;
+      padding: 18px 14px 4px;
+      margin-bottom: 8px;
+      overflow-x: auto;
+      scroll-snap-type: x mandatory;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+    }
+    .stat-grid::-webkit-scrollbar { display: none; }
+    .stat-card {
+      flex: 0 0 70%;
+      max-width: 240px;
+      scroll-snap-align: start;
+      padding: 16px 16px 14px;
+      border-radius: 14px;
+    }
+    .stat-card .label { margin-bottom: 10px; font-size: 10px; }
+    .stat-card .value { font-size: 28px; }
+    .stat-card .value .currency { font-size: 14px; }
+    .stat-card .delta { font-size: 11px; margin-top: 6px; }
+    .stat-card .label .icon-bg { width: 26px; height: 26px; }
+
+    /* Dash grid: stack */
+    .dash-grid { grid-template-columns: 1fr; gap: 14px; padding: 0 14px; margin-bottom: 14px; }
+
+    /* Card: edge-to-edge feel with bigger radii */
+    .dash-grid > .card,
+    .main > .card {
+      border-radius: 14px;
+      margin: 0 14px;
+    }
+    .card-head { padding: 16px 18px; }
+    .card-head h2 { font-size: 18px; }
+    .card-head .sub { font-size: 11.5px; }
+
+    /* Year ledger month grid */
+    .month-grid { grid-template-columns: repeat(3, 1fr); padding: 14px; gap: 8px; }
+    .month-cell { aspect-ratio: 1.15; padding: 10px 9px; border-radius: 10px; }
+    .month-cell .m-name { font-size: 9.5px; }
+    .month-cell .m-amt { font-size: 16px; }
+    .legend { padding: 12px 16px 16px; margin-left: 14px; margin-right: 14px; gap: 12px 14px; }
+    .legend-item { font-size: 10.5px; }
+
+    /* Quick pay composer — looks like an app sheet card */
+    .quick-pay { padding: 22px 20px; border-radius: 14px; }
+    .qp-modes { gap: 6px; padding: 5px; }
+    .qp-mode { padding: 10px 6px; }
+    .qp-mode-amt { font-size: 14px; }
+    .qp-mode-label { font-size: 9px; }
+
+    /* Custom amount input larger */
+    .qp-amount-input input { font-size: 36px; }
+
+    /* Receipts: tighter, app-list feel */
+    .receipts { padding: 4px 6px; }
+    .receipt-row {
+      grid-template-columns: 32px 1fr auto;
+      padding: 12px 12px;
+      gap: 11px;
+    }
+    .receipt-row .receipt-action { display: none; } /* swipe-style; tap row */
+    .receipt-icon { width: 32px; height: 32px; }
+    .receipt-meta .t { font-size: 13px; }
+    .receipt-meta .s { font-size: 11px; }
+    .receipt-amt { font-size: 16px; }
+
+    /* --- ADMIN MOBILE: stat strip + member cards (not table) --- */
+
+    /* Filter chips: horizontal scroll */
+    .filter-row {
+      flex-wrap: nowrap;
+      overflow-x: auto;
+      padding: 0 14px 4px;
+      margin: 14px -14px 0;
+      gap: 8px;
+      scrollbar-width: none;
+      -webkit-overflow-scrolling: touch;
+    }
+    .filter-row::-webkit-scrollbar { display: none; }
+    .filter-row::after { content: ""; flex: 0 0 14px; } /* trailing breathing room */
+    .chip { flex-shrink: 0; padding: 9px 14px; font-size: 12.5px; }
+    .chip[style*="margin-left:auto"] { margin-left: 0 !important; } /* override desktop "More filters" override */
+
+    /* Hide table on mobile, show card list */
+    .table-wrap { display: none; }
+    .table-foot {
+      padding: 14px 18px;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 12px;
+    }
+    .pager { justify-content: center; }
+    .members-cards {
+      display: block !important;
+      padding: 4px 0;
+    }
+
+    /* --- MODAL becomes bottom sheet --- */
+    .modal-overlay { padding: 0; align-items: flex-end; }
+    .modal {
+      max-height: 92dvh;
+      border-radius: 18px 18px 0 0;
+      width: 100%;
+    }
+    .modal-head { padding: 20px 22px 16px; padding-top: calc(20px + env(safe-area-inset-top, 0px) * 0.3); }
+    .modal-head h2 { font-size: 22px; }
+    .modal-head::after {
+      /* Drag handle */
+      content: ""; position: absolute; top: 8px; left: 50%; transform: translateX(-50%);
+      width: 38px; height: 4px; border-radius: 100px;
+      background: rgba(255,255,255,0.25);
+    }
+    .modal-body { padding: 18px 20px 8px; }
+    .modal-foot {
+      padding: 12px 18px 20px;
+      padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .modal-foot .btn-secondary,
+    .modal-foot .btn-primary { flex: 1; justify-content: center; }
+    .modal-foot .btn-secondary:nth-child(2) { display: none; }
+    .form-grid { grid-template-columns: 1fr; gap: 14px; }
+    .form-field.span-2 { grid-column: 1; }
+    .rp-member { grid-template-columns: auto 1fr; gap: 12px; padding: 13px 14px; }
+    .rp-attribution { grid-column: 1 / -1; border-left: none; padding-left: 0; padding-top: 12px; border-top: 1px solid var(--paper-3); text-align: left; }
+    .method-grid { grid-template-columns: repeat(2, 1fr); gap: 6px; }
+    .amt-presets { display: none; }
+    .amt-input-row input { font-size: 22px; }
+    .form-select, .checkbox { font-size: 15px; padding: 13px 14px; } /* better touch target & no iOS zoom */
+    select.form-select { font-size: 15px; }
+    .rp-preview { grid-template-columns: 1fr; gap: 10px; padding: 14px 16px; }
+    .rp-preview-amt { font-size: 26px; align-self: flex-start; }
+
+    /* Dev bar: shrink and reposition to top edge */
+    .dev-bar {
+      top: 8px;
+      padding: 4px;
+      gap: 2px;
+      max-width: calc(100vw - 16px);
+      flex-wrap: nowrap;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+    .dev-bar::-webkit-scrollbar { display: none; }
+    .dev-bar button { padding: 6px 10px; font-size: 9.5px; white-space: nowrap; }
+    .dev-bar .lang-toggle { padding-left: 6px; margin-left: 4px; }
+
+    /* Hide mobile-only items on desktop, show them on mobile */
+    .desktop-only { display: none !important; }
+  }
+
+  /* Mobile-only elements: hidden by default on desktop, shown above */
+  .mob-app-header,
+  .mob-page-title,
+  .mob-search-bar,
+  .bottom-tabs,
+  .members-cards,
+  .drawer-backdrop {
+    display: none;
+  }
+
+  /* Member cards (admin mobile only) */
+  .members-cards .mc-row {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 12px;
+    align-items: center;
+    padding: 13px 16px;
+    border-bottom: 1px solid var(--paper-3);
+    transition: background 0.15s;
+  }
+  .members-cards .mc-row:active { background: var(--paper-2); }
+  .members-cards .mc-row:last-child { border-bottom: none; }
+  .members-cards .mc-avatar {
+    width: 42px; height: 42px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--gold-soft), var(--gold-deep));
+    color: var(--ink);
+    font-weight: 700;
+    font-size: 14px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .members-cards .mc-body { min-width: 0; }
+  .members-cards .mc-line1 {
+    display: flex; align-items: baseline; gap: 8px;
+    margin-bottom: 4px;
+  }
+  .members-cards .mc-line1 .mc-id {
+    font-family: var(--font-display);
+    font-size: 11px;
+    color: var(--gold-deep);
+    font-weight: 700;
+    letter-spacing: 0.06em;
+  }
+  .members-cards .mc-line1 .mc-name {
+    font-weight: 600;
+    font-size: 14px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .members-cards .mc-line2 {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 11.5px;
+    color: var(--text-muted);
+  }
+  .members-cards .mc-line2 .desig {
+    padding: 2px 8px;
+    background: var(--paper-2);
+    border-radius: 100px;
+    font-size: 10.5px;
+    font-weight: 500;
+    color: var(--text-soft);
+  }
+  .members-cards .mc-line2 .desig.gold {
+    background: var(--ink);
+    color: var(--gold);
+  }
+  .members-cards .mc-line2 .mc-amt {
+    margin-left: auto;
+    font-family: var(--font-display);
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .members-cards .mc-progress {
+    grid-column: 1 / -1;
+    margin-top: 8px;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    gap: 10px;
+  }
+  .members-cards .mc-progress .progress { margin-bottom: 0; height: 4px; }
+  .members-cards .mc-progress .status-pill { font-size: 10.5px; }
+  .members-cards .mc-action {
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    background: var(--ink);
+    color: var(--gold);
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .members-cards .mc-action:active { transform: scale(0.92); }
+  .members-cards .mc-action svg { width: 15px; height: 15px; }
+  .members-cards .no-results-card {
+    display: block !important;
+    grid-template-columns: 1fr;
+    border-bottom: none;
+  }
+  .members-cards .no-results-card:active { background: transparent; }
+
+  @media (max-width: 540px) {
+    .topbar-left h1 { font-size: 24px; }
+  }
+
+  /* Mobile menu trigger (desktop sidebar burger) - hidden on real desktop */
+  .mob-menu { display: none; }
+</style>
+</head>
+<body>
+
+<!-- ============================================================
+     DEV NAV BAR (mockup screen switcher)
+============================================================ -->
+<div class="dev-bar">
+  <button class="active" data-go="login">Login</button>
+  <button data-go="user">User Dashboard</button>
+  <button data-go="admin">Admin Dashboard</button>
+  <span class="lang-toggle">
+    <button class="lang-btn active" data-lang="en">EN</button>
+    <button class="lang-btn" data-lang="ur">اردو</button>
+  </span>
+</div>
+
+<!-- ============================================================
+     SCREEN 1 — LOGIN
+============================================================ -->
+<section class="screen active" id="login">
+  <div class="login-wrap">
+
+    <!-- Hero panel -->
+    <div class="login-hero">
+      <div class="hero-watermark"><img src="Logo.png" alt="" /></div>
+      <div class="brand-mark">
+        <div class="brand-emblem">
+          <img src="Logo.png" alt="Hasnain Karimain Foundation" />
+        </div>
+        <div class="brand-text">
+          <span class="t1">Hasnain Karimain</span>
+          <span class="t2">Foundation · Est. trust</span>
+        </div>
+      </div>
+
+      <div class="hero-content">
+        <div class="hero-eyebrow" data-translate="eyebrow">Zakat · Fitrah · Chanda</div>
+        <h1 class="hero-title" data-translate="hero_title">A trusted ledger for <em>collective good.</em></h1>
+        <p class="hero-sub" data-translate="hero_sub">
+          Replace the spreadsheet. Honour every contribution with a transparent, member-first record — built for our community, in your language.
+        </p>
+        <p class="hero-urdu" data-translate-only="ur">
+          امانت کا ایک قابلِ اعتماد دفتر۔ ہر چندہ، فطرہ اور زکوٰۃ کا شفاف ریکارڈ، آپ کی زبان میں۔
+        </p>
+      </div>
+
+      <div class="hero-foot">
+        <div class="stat-row">
+          <div class="stat">
+            <span class="num">63,406</span>
+            <span class="lbl latin" data-translate="hf_collected">Collected YTD</span>
+          </div>
+          <div class="stat">
+            <span class="num">128</span>
+            <span class="lbl latin" data-translate="hf_members">Members</span>
+          </div>
+          <div class="stat">
+            <span class="num">12</span>
+            <span class="lbl latin" data-translate="hf_months">Months tracked</span>
+          </div>
+        </div>
+        <span class="latin">v1.0 · 2026</span>
+      </div>
+    </div>
+
+    <!-- Form panel -->
+    <div class="login-panel">
+      <div class="login-panel-inner">
+        <h2 class="panel-title" data-translate="welcome_back">Welcome back</h2>
+        <p class="panel-sub" data-translate="login_sub">Sign in to view your contribution ledger.</p>
+
+        <div class="seg" id="loginSeg">
+          <button class="active" data-role="member" data-translate="member">Member</button>
+          <button data-role="admin" data-translate="admin">Admin</button>
+        </div>
+
+        <div class="field">
+          <label data-translate="member_id">Member ID or Email</label>
+          <input type="text" placeholder="M016 / yourname@email.com" />
+        </div>
+        <div class="field">
+          <label data-translate="password">Password</label>
+          <input type="password" placeholder="••••••••••" />
+        </div>
+
+        <div class="login-extras">
+          <label><input type="checkbox" checked /> <span data-translate="remember">Remember me</span></label>
+          <a href="#" data-translate="forgot">Forgot password?</a>
+        </div>
+
+        <button class="btn-primary" data-go="user" data-translate="signin">Sign in</button>
+
+        <div class="or-divider"><span data-translate="or">or</span></div>
+
+        <p class="alt-help">
+          <span data-translate="new_member">New member? Speak to your treasurer to receive your Member ID.</span>
+        </p>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+
+<!-- ============================================================
+     SCREEN 2 — USER (MEMBER) DASHBOARD
+============================================================ -->
+<section class="screen" id="user">
+  <div class="app">
+
+    <!-- Sidebar -->
+    <aside class="sidebar" id="userSidebar">
+      <div class="brand-mark">
+        <div class="brand-emblem">
+          <img src="Logo.png" alt="HK Foundation" />
+        </div>
+        <div class="brand-text">
+          <span class="t1">HK Foundation</span>
+          <span class="t2">Member Portal</span>
+        </div>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-label" data-translate="nav_overview">Overview</div>
+        <nav class="nav">
+          <a href="#" class="active">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+            <span data-translate="nav_dashboard">Dashboard</span>
+          </a>
+          <a href="#">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 9 L12 4 L21 9 V20 H3 Z"/><path d="M9 20 V13 H15 V20"/></svg>
+            <span data-translate="nav_my_profile">My Profile</span>
+          </a>
+          <a href="#">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10 H21"/><path d="M7 15 H10"/></svg>
+            <span data-translate="nav_payments">Payments</span>
+            <span class="badge">2</span>
+          </a>
+          <a href="#">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 3 H6 a2 2 0 0 0 -2 2 V19 a2 2 0 0 0 2 2 H18 a2 2 0 0 0 2 -2 V9 Z"/><path d="M14 3 V9 H20"/><path d="M8 13 H16"/><path d="M8 17 H13"/></svg>
+            <span data-translate="nav_receipts">Receipts</span>
+          </a>
+          <a href="#">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7 V12 L15 14"/></svg>
+            <span data-translate="nav_history">History</span>
+          </a>
+        </nav>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-label" data-translate="nav_account">Account</div>
+        <nav class="nav">
+          <a href="#">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            <span data-translate="nav_settings">Settings</span>
+          </a>
+          <a href="#">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 12 H21 M21 12 L17 8 M21 12 L17 16 M9 4 H5 a2 2 0 0 0 -2 2 V18 a2 2 0 0 0 2 2 H9"/></svg>
+            <span data-translate="nav_logout">Sign out</span>
+          </a>
+        </nav>
+      </div>
+
+      <div class="sidebar-foot">
+        <div class="user-chip">
+          <div class="avatar">YK</div>
+          <div class="info">
+            <div class="name">Yusuf Khan</div>
+            <div class="role">Donor · M016</div>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main -->
+    <main class="main">
+      <!-- Mobile app header (visible only on mobile) -->
+      <header class="mob-app-header">
+        <div class="mah-l">
+          <button class="mah-emblem" onclick="document.getElementById('userSidebar').classList.toggle('open'); document.getElementById('userBackdrop').classList.toggle('open')" aria-label="Menu">
+            <img src="Logo.png" alt="HK Foundation" />
+          </button>
+          <div class="mah-greet">
+            <div class="g1" data-translate="mob_assalam">Assalamu Alaikum</div>
+            <div class="g2" data-translate="mob_yusuf">Yusuf Khan</div>
+          </div>
+        </div>
+        <div class="mah-r">
+          <button class="mah-icon" aria-label="Search">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M16 16 L21 21"/></svg>
+          </button>
+          <button class="mah-icon" aria-label="Notifications">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8 a6 6 0 0 0 -12 0 c0 7 -3 9 -3 9 H21 s-3 -2 -3 -9"/><path d="M13.7 21 a2 2 0 0 1 -3.4 0"/></svg>
+            <span class="dot"></span>
+          </button>
+        </div>
+      </header>
+
+      <!-- Mobile page title strip -->
+      <div class="mob-page-title">
+        <div class="crumbs latin" data-translate="member_portal_short">2026 Ledger</div>
+        <h1 data-translate="mob_dashboard">Dashboard</h1>
+      </div>
+
+      <!-- Desktop topbar (hidden on mobile) -->
+      <div class="topbar">
+        <div class="topbar-left">
+          <button class="icon-btn mob-menu" onclick="document.getElementById('userSidebar').classList.toggle('open')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6 H21 M3 12 H21 M3 18 H21"/></svg>
+          </button>
+          <div class="crumbs latin" data-translate="member_portal">Member Portal · 2026</div>
+          <h1 data-translate="welcome_yusuf">Welcome back, Yusuf</h1>
+        </div>
+        <div class="topbar-right">
+          <div class="search">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M16 16 L21 21"/></svg>
+            <input type="text" placeholder="Search receipts, months…" />
+            <kbd class="latin">⌘K</kbd>
+          </div>
+          <button class="icon-btn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8 a6 6 0 0 0 -12 0 c0 7 -3 9 -3 9 H21 s-3 -2 -3 -9"/><path d="M13.7 21 a2 2 0 0 1 -3.4 0"/></svg>
+            <span class="dot"></span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Notification: admin recorded a payment for the user -->
+      <div class="new-entry-banner" id="adminEntryBanner">
+        <div class="neb-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="20 6 9 17 4 12"/></svg>
+        </div>
+        <div class="neb-text" data-translate="banner_text">
+          <strong>Yaseen Unawala</strong> recorded your <strong>March 2026</strong> chanda payment of <strong>₹325</strong> in cash. Receipt RCT-2026-014 has been added to your ledger.
+        </div>
+        <button class="neb-close" onclick="this.parentElement.style.display='none'" aria-label="Dismiss">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+
+      <!-- Profile strip -->
+      <div class="profile-strip">
+        <div class="profile-avatar">YK</div>
+        <div class="profile-info">
+          <div class="pid latin">Member ID · M016</div>
+          <div class="pname">Yusuf Khan</div>
+          <div class="pdesig" data-translate="role_donor">Donor · Member since Jan 2024</div>
+        </div>
+        <div class="profile-meta">
+          <div class="ml" data-translate="annual_pledge">Annual Pledge</div>
+          <div class="mv">₹ 4,000</div>
+        </div>
+      </div>
+
+      <!-- Stat grid -->
+      <div class="stat-grid">
+        <div class="stat-card">
+          <div class="ornament"></div>
+          <div class="label">
+            <span data-translate="stat_paid">Paid this year</span>
+            <span class="icon-bg"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg></span>
+          </div>
+          <div class="value latin"><span class="currency">₹</span>1,250</div>
+          <div class="delta"><span class="arrow">↑</span> <span data-translate="stat_paid_delta">₹275 over pledge</span></div>
+        </div>
+        <div class="stat-card">
+          <div class="ornament"></div>
+          <div class="label">
+            <span data-translate="stat_pending">April Pending</span>
+            <span class="icon-bg"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7 V13"/><circle cx="12" cy="17" r="0.5" fill="currentColor"/></svg></span>
+          </div>
+          <div class="value latin"><span class="currency">₹</span>325</div>
+          <div class="delta warn"><span class="arrow">⏱</span> <span data-translate="stat_pending_delta">Due Apr 30</span></div>
+        </div>
+        <div class="stat-card">
+          <div class="ornament"></div>
+          <div class="label">
+            <span data-translate="stat_lifetime">Lifetime giving</span>
+            <span class="icon-bg"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61 a5.5 5.5 0 0 0 -7.78 0 L12 5.67 l-1.06 -1.06 a5.5 5.5 0 0 0 -7.78 7.78 l1.06 1.06 L12 21.23 l7.78 -7.78 1.06 -1.06 a5.5 5.5 0 0 0 0 -7.78 z"/></svg></span>
+          </div>
+          <div class="value latin"><span class="currency">₹</span>11,475</div>
+          <div class="delta"><span data-translate="stat_lifetime_delta">Since Jan 2024</span></div>
+        </div>
+        <div class="stat-card">
+          <div class="ornament"></div>
+          <div class="label">
+            <span data-translate="stat_streak">Generosity</span>
+            <span class="icon-bg"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61 a5.5 5.5 0 0 0 -7.78 0 L12 5.67 l-1.06 -1.06 a5.5 5.5 0 0 0 -7.78 7.78 l1.06 1.06 L12 21.23 l7.78 -7.78 1.06 -1.06 a5.5 5.5 0 0 0 0 -7.78 z"/></svg></span>
+          </div>
+          <div class="value latin">128%</div>
+          <div class="delta"><span class="arrow">↑</span> <span data-translate="stat_streak_delta">Of pledged amount</span></div>
+        </div>
+      </div>
+
+      <!-- 2-col content -->
+      <div class="dash-grid">
+
+        <!-- Year payment grid -->
+        <div class="card">
+          <div class="card-head">
+            <div>
+              <h2 data-translate="year_ledger">Year Ledger · 2026</h2>
+              <div class="sub" data-translate="year_ledger_sub">A month-by-month view of your contributions</div>
+            </div>
+            <button class="btn-secondary">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              <span data-translate="export">Export</span>
+            </button>
+          </div>
+          <div class="month-grid">
+            <div class="month-cell paid"><span class="m-status"></span><div class="m-name">Jan</div><div class="m-amt latin">₹325</div></div>
+            <div class="month-cell bonus"><span class="m-status"></span><div class="m-name">Feb</div><div class="m-amt latin">₹600</div><div class="m-tag" data-translate="tag_extra">+ Extra</div></div>
+            <div class="month-cell paid"><span class="m-status"></span><div class="m-name">Mar</div><div class="m-amt latin">₹325</div><div class="m-tag-admin"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 2 L4 7 L4 17 L12 22 L20 17 L20 7 Z"/></svg><span data-translate="tag_admin">ADMIN</span></div></div>
+            <div class="month-cell pending"><span class="m-status"></span><div class="m-name">Apr</div><div class="m-amt latin">₹325</div></div>
+            <div class="month-cell future"><span class="m-status"></span><div class="m-name">May</div><div class="m-amt latin">₹325</div></div>
+            <div class="month-cell future"><span class="m-status"></span><div class="m-name">Jun</div><div class="m-amt latin">₹325</div></div>
+            <div class="month-cell future"><span class="m-status"></span><div class="m-name">Jul</div><div class="m-amt latin">₹325</div></div>
+            <div class="month-cell future"><span class="m-status"></span><div class="m-name">Aug</div><div class="m-amt latin">₹325</div></div>
+            <div class="month-cell future"><span class="m-status"></span><div class="m-name">Sep</div><div class="m-amt latin">₹300</div></div>
+            <div class="month-cell future"><span class="m-status"></span><div class="m-name">Oct</div><div class="m-amt latin">₹300</div></div>
+            <div class="month-cell future"><span class="m-status"></span><div class="m-name">Nov</div><div class="m-amt latin">₹400</div></div>
+            <div class="month-cell future"><span class="m-status"></span><div class="m-name">Dec</div><div class="m-amt latin">₹400</div></div>
+          </div>
+          <div class="legend">
+            <span class="legend-item"><span class="lg-dot lg-paid"></span><span data-translate="lg_paid">Paid</span></span>
+            <span class="legend-item"><span class="lg-dot lg-bonus"></span><span data-translate="lg_bonus">Paid + Extra</span></span>
+            <span class="legend-item"><span class="lg-dot lg-pending"></span><span data-translate="lg_pending">Pending</span></span>
+            <span class="legend-item"><span class="lg-dot lg-skip"></span><span data-translate="lg_skip">Skipped</span></span>
+            <span class="legend-item"><span class="lg-dot lg-future"></span><span data-translate="lg_upcoming">Upcoming</span></span>
+          </div>
+        </div>
+
+        <!-- Flexible payment composer -->
+        <div>
+          <div class="quick-pay">
+            <div class="qp-header">
+              <h3 data-translate="qp_title">Make a Contribution</h3>
+              <span class="qp-month-pill latin">APR 2026</span>
+            </div>
+            <p data-translate="qp_sub">Pay the pledge amount, contribute extra, or skip this month with a note. Your choice — every contribution is logged transparently.</p>
+
+            <!-- Mode selector -->
+            <div class="qp-modes" id="qpModes">
+              <button class="qp-mode active" data-mode="pledge">
+                <div class="qp-mode-top">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                  <span class="qp-mode-amt latin">₹325</span>
+                </div>
+                <span class="qp-mode-label" data-translate="qp_mode_pledge">Pledge</span>
+              </button>
+              <button class="qp-mode" data-mode="extra">
+                <div class="qp-mode-top">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5 V19 M5 12 H19"/></svg>
+                  <span class="qp-mode-amt" data-translate="qp_mode_custom_amt">Custom</span>
+                </div>
+                <span class="qp-mode-label" data-translate="qp_mode_extra">Give Extra</span>
+              </button>
+              <button class="qp-mode" data-mode="skip">
+                <div class="qp-mode-top">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 4 L19 12 L5 20 Z"/></svg>
+                  <span class="qp-mode-amt" data-translate="qp_mode_skip_amt">—</span>
+                </div>
+                <span class="qp-mode-label" data-translate="qp_mode_skip">Skip Month</span>
+              </button>
+            </div>
+
+            <!-- PLEDGE PANEL -->
+            <div class="qp-panel active" data-panel="pledge">
+              <div class="qp-row">
+                <span class="k" data-translate="qp_category">Category</span>
+                <span class="v" data-translate="qp_chanda">Monthly Chanda</span>
+              </div>
+              <div class="qp-row">
+                <span class="k" data-translate="qp_pledge_amt">Pledge amount</span>
+                <span class="v gold latin">₹ 325</span>
+              </div>
+              <button class="btn-primary" data-translate="qp_pay">Pay with UPI</button>
+            </div>
+
+            <!-- EXTRA PANEL -->
+            <div class="qp-panel" data-panel="extra">
+              <div class="qp-amount-input">
+                <span class="qp-currency">₹</span>
+                <input type="number" id="qpAmount" value="500" min="1" />
+              </div>
+              <div class="qp-presets">
+                <button class="qp-preset latin" data-amt="325">₹325</button>
+                <button class="qp-preset latin active" data-amt="500">₹500</button>
+                <button class="qp-preset latin" data-amt="1000">₹1,000</button>
+                <button class="qp-preset latin" data-amt="2100">₹2,100</button>
+                <button class="qp-preset latin" data-amt="5000">₹5,000</button>
+              </div>
+              <div class="qp-allocate">
+                <label class="qp-cat-label" data-translate="qp_allocate">Allocate to</label>
+                <select class="qp-select">
+                  <option data-translate-opt="opt_chanda">Monthly Chanda</option>
+                  <option data-translate-opt="opt_zakat">Zakat</option>
+                  <option data-translate-opt="opt_fitrah">Fitrah</option>
+                  <option data-translate-opt="opt_general">General Donation</option>
+                  <option data-translate-opt="opt_misc">Special Cause / Misc</option>
+                </select>
+              </div>
+              <div class="qp-note-row">
+                <span class="k" data-translate="qp_above_pledge">Above pledge</span>
+                <span class="v gold latin" id="qpExtraDelta">+ ₹175</span>
+              </div>
+              <button class="btn-primary" data-translate="qp_pay">Pay with UPI</button>
+            </div>
+
+            <!-- SKIP PANEL -->
+            <div class="qp-panel" data-panel="skip">
+              <div class="qp-skip-warn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86 L1.82 18 a2 2 0 0 0 1.71 3 H20.47 a2 2 0 0 0 1.71 -3 L13.71 3.86 a2 2 0 0 0 -3.42 0 z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                <span data-translate="qp_skip_warn">Skipping marks April as deferred. You can still pay later — your annual total will reflect the gap.</span>
+              </div>
+              <label class="qp-cat-label" data-translate="qp_skip_reason">Reason (optional)</label>
+              <select class="qp-select">
+                <option data-translate-opt="opt_skip_finance">Financial constraint this month</option>
+                <option data-translate-opt="opt_skip_travel">Travelling / unavailable</option>
+                <option data-translate-opt="opt_skip_pay_later">Will pay later in the year</option>
+                <option data-translate-opt="opt_skip_other">Other</option>
+              </select>
+              <button class="btn-skip" data-translate="qp_confirm_skip">Confirm skip for April</button>
+              <button class="btn-text" data-translate="qp_change_mind">Changed my mind</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Recent receipts -->
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <h2 data-translate="recent_receipts">Recent Receipts</h2>
+            <div class="sub" data-translate="recent_receipts_sub">Tap any receipt to view or download as PDF</div>
+          </div>
+          <button class="btn-secondary"><span data-translate="view_all">View all</span></button>
+        </div>
+        <div class="receipts">
+          <div class="receipt-row">
+            <div class="receipt-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3 H6 a2 2 0 0 0 -2 2 V19 a2 2 0 0 0 2 2 H18 a2 2 0 0 0 2 -2 V9 Z"/><path d="M14 3 V9 H20"/></svg></div>
+            <div class="receipt-meta">
+              <div class="t"><span data-translate="rec_mar">March 2026 · Chanda</span><span class="recorded-by-admin"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 2 L4 7 L4 17 L12 22 L20 17 L20 7 Z"/></svg> <span data-translate="badge_admin">By Admin</span></span></div>
+              <div class="s latin">RCT-2026-014 · Mar 03, 2026 · <span data-translate="rec_mar_method">Cash · Yaseen Unawala</span></div>
+            </div>
+            <div class="receipt-amt latin">₹325</div>
+            <a href="#" class="receipt-action"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></a>
+          </div>
+          <div class="receipt-row">
+            <div class="receipt-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3 H6 a2 2 0 0 0 -2 2 V19 a2 2 0 0 0 2 2 H18 a2 2 0 0 0 2 -2 V9 Z"/><path d="M14 3 V9 H20"/></svg></div>
+            <div class="receipt-meta"><div class="t" data-translate="rec_feb">February 2026 · Chanda</div><div class="s latin">RCT-2026-009 · Feb 02, 2026</div></div>
+            <div class="receipt-amt latin">₹325</div>
+            <a href="#" class="receipt-action"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></a>
+          </div>
+          <div class="receipt-row">
+            <div class="receipt-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3 H6 a2 2 0 0 0 -2 2 V19 a2 2 0 0 0 2 2 H18 a2 2 0 0 0 2 -2 V9 Z"/><path d="M14 3 V9 H20"/></svg></div>
+            <div class="receipt-meta"><div class="t" data-translate="rec_jan">January 2026 · Chanda</div><div class="s latin">RCT-2026-002 · Jan 04, 2026</div></div>
+            <div class="receipt-amt latin">₹325</div>
+            <a href="#" class="receipt-action"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></a>
+          </div>
+          <div class="receipt-row">
+            <div class="receipt-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3 H6 a2 2 0 0 0 -2 2 V19 a2 2 0 0 0 2 2 H18 a2 2 0 0 0 2 -2 V9 Z"/><path d="M14 3 V9 H20"/></svg></div>
+            <div class="receipt-meta"><div class="t" data-translate="rec_dec">Zakat · Ramadan 2025</div><div class="s latin">RCT-2025-Z42 · Apr 08, 2025</div></div>
+            <div class="receipt-amt latin">₹2,100</div>
+            <a href="#" class="receipt-action"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></a>
+          </div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <!-- Drawer backdrop (mobile only, when sidebar drawer opens) -->
+  <div class="drawer-backdrop" id="userBackdrop" onclick="document.getElementById('userSidebar').classList.remove('open'); this.classList.remove('open')"></div>
+
+  <!-- Mobile bottom tab bar (visible only on mobile) -->
+  <nav class="bottom-tabs" aria-label="Primary navigation">
+    <button class="bt-item active">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+      <span data-translate="bt_home">Home</span>
+    </button>
+    <button class="bt-item">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M14 3 H6 a2 2 0 0 0 -2 2 V19 a2 2 0 0 0 2 2 H18 a2 2 0 0 0 2 -2 V9 Z"/><path d="M14 3 V9 H20"/></svg>
+      <span data-translate="bt_receipts">Receipts</span>
+    </button>
+    <button class="bt-item bt-fab">
+      <span class="bt-fab-circle">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 5 V19 M5 12 H19"/></svg>
+      </span>
+      <span data-translate="bt_pay">Pay</span>
+    </button>
+    <button class="bt-item">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="9"/><path d="M12 7 V12 L15 14"/></svg>
+      <span data-translate="bt_history">History</span>
+      <span class="badge">2</span>
+    </button>
+    <button class="bt-item">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="8" r="4"/><path d="M4 21 a8 8 0 0 1 16 0"/></svg>
+      <span data-translate="bt_profile">Profile</span>
+    </button>
+  </nav>
+</section>
+
+
+<!-- ============================================================
+     SCREEN 3 — ADMIN DASHBOARD
+============================================================ -->
+<section class="screen" id="admin">
+  <div class="app">
+
+    <!-- Sidebar -->
+    <aside class="sidebar" id="adminSidebar">
+      <div class="brand-mark">
+        <div class="brand-emblem">
+          <img src="Logo.png" alt="HK Foundation" />
+        </div>
+        <div class="brand-text">
+          <span class="t1">HK Foundation</span>
+          <span class="t2">Admin Console</span>
+        </div>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-label" data-translate="nav_manage">Manage</div>
+        <nav class="nav">
+          <a href="#">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+            <span data-translate="nav_overview2">Overview</span>
+          </a>
+          <a href="#" class="active">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            <span data-translate="nav_members">Members</span>
+            <span class="badge">128</span>
+          </a>
+          <a href="#">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10 H21"/><path d="M7 15 H10"/></svg>
+            <span data-translate="nav_collections">Collections</span>
+          </a>
+          <a href="#">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 3 H6 a2 2 0 0 0 -2 2 V19 a2 2 0 0 0 2 2 H18 a2 2 0 0 0 2 -2 V9 Z"/><path d="M14 3 V9 H20"/><path d="M8 13 H16"/><path d="M8 17 H13"/></svg>
+            <span data-translate="nav_reports">Reports</span>
+          </a>
+          <a href="#">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            <span data-translate="nav_reminders">Reminders</span>
+          </a>
+        </nav>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-label" data-translate="nav_settings_label">Settings</div>
+        <nav class="nav">
+          <a href="#">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            <span data-translate="nav_org">Organization</span>
+          </a>
+          <a href="#">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            <span data-translate="nav_audit">Audit Log</span>
+          </a>
+        </nav>
+      </div>
+
+      <div class="sidebar-foot">
+        <div class="user-chip">
+          <div class="avatar">YU</div>
+          <div class="info">
+            <div class="name">Yaseen Unawala</div>
+            <div class="role">President · Admin</div>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main -->
+    <main class="main">
+      <!-- Mobile app header (visible only on mobile) -->
+      <header class="mob-app-header">
+        <div class="mah-l">
+          <button class="mah-emblem" onclick="document.getElementById('adminSidebar').classList.toggle('open'); document.getElementById('adminBackdrop').classList.toggle('open')" aria-label="Menu">
+            <img src="Logo.png" alt="HK Foundation" />
+          </button>
+          <div class="mah-greet">
+            <div class="g1" data-translate="mob_admin_greet">Admin · Yaseen</div>
+            <div class="g2" data-translate="mob_members">Members</div>
+          </div>
+        </div>
+        <div class="mah-r">
+          <button class="mah-icon" aria-label="Notifications">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8 a6 6 0 0 0 -12 0 c0 7 -3 9 -3 9 H21 s-3 -2 -3 -9"/><path d="M13.7 21 a2 2 0 0 1 -3.4 0"/></svg>
+            <span class="dot"></span>
+          </button>
+        </div>
+      </header>
+
+      <!-- Mobile page title strip -->
+      <div class="mob-page-title">
+        <div class="crumbs latin" data-translate="admin_console_short">Admin Console</div>
+        <h1 data-translate="member_directory">Member Directory</h1>
+      </div>
+
+      <!-- Mobile search bar (sits below header, not in app header) -->
+      <div class="mob-search-bar">
+        <div class="search" id="adminSearchWrapMob">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M16 16 L21 21"/></svg>
+          <input type="text" id="adminSearchMob" placeholder="Search by name or ID…" />
+          <button type="button" class="search-clear" id="adminSearchClearMob" aria-label="Clear search">×</button>
+        </div>
+      </div>
+
+      <!-- Desktop topbar (hidden on mobile) -->
+      <div class="topbar">
+        <div class="topbar-left">
+          <button class="icon-btn mob-menu" onclick="document.getElementById('adminSidebar').classList.toggle('open')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6 H21 M3 12 H21 M3 18 H21"/></svg>
+          </button>
+          <div class="crumbs latin" data-translate="admin_console">Admin Console · Members</div>
+          <h1 data-translate="member_directory">Member Directory</h1>
+        </div>
+        <div class="topbar-right">
+          <div class="search" id="adminSearchWrap">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M16 16 L21 21"/></svg>
+            <input type="text" id="adminSearch" placeholder="Search by name or ID…" />
+            <button type="button" class="search-clear" id="adminSearchClear" aria-label="Clear search">×</button>
+          </div>
+          <button class="icon-btn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8 a6 6 0 0 0 -12 0 c0 7 -3 9 -3 9 H21 s-3 -2 -3 -9"/><path d="M13.7 21 a2 2 0 0 1 -3.4 0"/></svg>
+            <span class="dot"></span>
+          </button>
+          <button class="btn-gold">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5 V19 M5 12 H19"/></svg>
+            <span data-translate="add_member">Add Member</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Stats -->
+      <div class="stat-grid">
+        <div class="stat-card">
+          <div class="ornament"></div>
+          <div class="label">
+            <span data-translate="adm_total">Total Collected · YTD</span>
+            <span class="icon-bg"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12 H21 M3 6 H21 M3 18 H21"/></svg></span>
+          </div>
+          <div class="value latin"><span class="currency">₹</span>63,406</div>
+          <div class="delta"><span class="arrow">↑</span> <span data-translate="adm_total_d">+18% vs last year</span></div>
+        </div>
+        <div class="stat-card">
+          <div class="ornament"></div>
+          <div class="label">
+            <span data-translate="adm_active">Active Members</span>
+            <span class="icon-bg"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg></span>
+          </div>
+          <div class="value latin">128</div>
+          <div class="delta"><span class="arrow">↑</span> <span data-translate="adm_active_d">+4 this quarter</span></div>
+        </div>
+        <div class="stat-card">
+          <div class="ornament"></div>
+          <div class="label">
+            <span data-translate="adm_pending">Pending Dues</span>
+            <span class="icon-bg"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7 V13"/><circle cx="12" cy="17" r="0.5" fill="currentColor"/></svg></span>
+          </div>
+          <div class="value latin"><span class="currency">₹</span>14,250</div>
+          <div class="delta warn"><span class="arrow">⏱</span> <span data-translate="adm_pending_d">22 members behind</span></div>
+        </div>
+        <div class="stat-card">
+          <div class="ornament"></div>
+          <div class="label">
+            <span data-translate="adm_apr">April Collection</span>
+            <span class="icon-bg"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2 V6 M8 2 V6 M3 10 H21"/></svg></span>
+          </div>
+          <div class="value latin"><span class="currency">₹</span>6,726</div>
+          <div class="delta"><span class="arrow">→</span> <span data-translate="adm_apr_d">42% of monthly target</span></div>
+        </div>
+      </div>
+
+      <!-- Filter chips -->
+      <div class="filter-row">
+        <button class="chip active"><span data-translate="filt_all">All Members</span> <span class="ct">128</span></button>
+        <button class="chip"><span data-translate="filt_full">Full Paid</span> <span class="ct">42</span></button>
+        <button class="chip"><span data-translate="filt_partial">Partial</span> <span class="ct">64</span></button>
+        <button class="chip"><span data-translate="filt_pending">Pending</span> <span class="ct">22</span></button>
+        <button class="chip"><span data-translate="filt_not">Not Started</span> <span class="ct">8</span></button>
+        <button class="chip" style="margin-left:auto"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px"><path d="M22 3H2 l8 9.46V19 l4 2 V12.46 z"/></svg> <span data-translate="filt_more">More filters</span></button>
+      </div>
+
+      <!-- Members table -->
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <h2 data-translate="all_members">All Members</h2>
+            <div class="sub" data-translate="all_members_sub">Showing 8 of 128 · Sorted by Member ID</div>
+          </div>
+          <div style="display:flex;gap:10px">
+            <button class="btn-secondary">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              <span data-translate="export_csv">Export CSV</span>
+            </button>
+            <button class="btn-secondary">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+              <span data-translate="send_reminder">Remind All Pending</span>
+            </button>
+          </div>
+        </div>
+        <div class="table-wrap">
+        <table class="members">
+          <thead>
+            <tr>
+              <th data-translate="th_id">ID</th>
+              <th data-translate="th_member">Member</th>
+              <th class="hide-mob" data-translate="th_role">Role</th>
+              <th class="hide-mob" data-translate="th_total">Paid</th>
+              <th class="hide-mob" data-translate="th_progress">Progress</th>
+              <th data-translate="th_status">Status</th>
+              <th data-translate="th_actions"></th>
+            </tr>
+          </thead>
+          <tbody id="membersTbody">
+            <tr>
+              <td class="sr latin">M001</td>
+              <td><div class="member-cell"><div class="mini-avatar">MQ</div><div><div class="nm">Maulana Izhar Ahmed</div><div class="em">Qadri Sahab Qibla</div></div></div></td>
+              <td class="hide-mob"><span class="desig gold" data-translate="r_monitor">Monitor</span></td>
+              <td class="hide-mob amt latin">₹1,200</td>
+              <td class="hide-mob progress-cell"><div class="progress"><span style="width:100%"></span></div><div class="progress-meta latin"><span>12/12</span><span>100%</span></div></td>
+              <td><span class="status-pill ok" data-translate="st_full">Full Paid</span></td>
+              <td><div class="row-actions">
+                <button class="icon-btn record-pay-btn" data-member="M001" data-name="Maulana Izhar Ahmed Qadri" data-init="MQ" data-pledge="1200" data-monthly="100" title="Record Payment">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10 H21"/><path d="M7 15 H10"/></svg>
+                </button>
+                <button class="icon-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4 H4 a2 2 0 0 0 -2 2 V20 a2 2 0 0 0 2 2 H18 a2 2 0 0 0 2 -2 V13"/><path d="M18.5 2.5 a2.121 2.121 0 0 1 3 3 L12 15 H9 V12 z"/></svg></button>
+                <button class="icon-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg></button>
+              </div></td>
+            </tr>
+            <tr>
+              <td class="sr latin">M002</td>
+              <td><div class="member-cell"><div class="mini-avatar">YU</div><div><div class="nm">Yaseen Unawala</div><div class="em latin">yaseen@hkfound.org</div></div></div></td>
+              <td class="hide-mob"><span class="desig gold" data-translate="r_president">President</span></td>
+              <td class="hide-mob amt latin">₹900</td>
+              <td class="hide-mob progress-cell"><div class="progress"><span style="width:17%"></span></div><div class="progress-meta latin"><span>2/12</span><span>17%</span></div></td>
+              <td><span class="status-pill warn" data-translate="st_pend">Pending Mar</span></td>
+              <td><div class="row-actions">
+                <button class="icon-btn record-pay-btn" data-member="M002" data-name="Yaseen Unawala" data-init="YU" data-pledge="900" data-monthly="300" title="Record Payment">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10 H21"/><path d="M7 15 H10"/></svg>
+                </button>
+                <button class="icon-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4 H4 a2 2 0 0 0 -2 2 V20 a2 2 0 0 0 2 2 H18 a2 2 0 0 0 2 -2 V13"/><path d="M18.5 2.5 a2.121 2.121 0 0 1 3 3 L12 15 H9 V12 z"/></svg></button>
+                <button class="icon-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg></button>
+              </div></td>
+            </tr>
+            <tr>
+              <td class="sr latin">M003</td>
+              <td><div class="member-cell"><div class="mini-avatar">ZM</div><div><div class="nm">Zeeshan Momin</div><div class="em latin">+91 98••• ••432</div></div></div></td>
+              <td class="hide-mob"><span class="desig" data-translate="r_vp">Vc. President</span></td>
+              <td class="hide-mob amt latin">₹1,000</td>
+              <td class="hide-mob progress-cell"><div class="progress"><span style="width:33%"></span></div><div class="progress-meta latin"><span>4/12</span><span>33%</span></div></td>
+              <td><span class="status-pill warn" data-translate="st_apr">Pending Apr</span></td>
+              <td><div class="row-actions">
+                <button class="icon-btn record-pay-btn" data-member="M003" data-name="Zeeshan Momin" data-init="ZM" data-pledge="1000" data-monthly="250" title="Record Payment">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10 H21"/><path d="M7 15 H10"/></svg>
+                </button>
+                <button class="icon-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4 H4 a2 2 0 0 0 -2 2 V20 a2 2 0 0 0 2 2 H18 a2 2 0 0 0 2 -2 V13"/><path d="M18.5 2.5 a2.121 2.121 0 0 1 3 3 L12 15 H9 V12 z"/></svg></button>
+                <button class="icon-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg></button>
+              </div></td>
+            </tr>
+            <tr>
+              <td class="sr latin">M005</td>
+              <td><div class="member-cell"><div class="mini-avatar">SM</div><div><div class="nm">Sahil Momin</div><div class="em latin">sahil.m@email.com</div></div></div></td>
+              <td class="hide-mob"><span class="desig" data-translate="r_jt">Jt. Treasurer</span></td>
+              <td class="hide-mob amt latin">₹1,900</td>
+              <td class="hide-mob progress-cell"><div class="progress"><span style="width:100%"></span></div><div class="progress-meta latin"><span>12/12</span><span>100%</span></div></td>
+              <td><span class="status-pill ok" data-translate="st_full">Full Paid</span></td>
+              <td><div class="row-actions">
+                <button class="icon-btn record-pay-btn" data-member="M005" data-name="Sahil Momin" data-init="SM" data-pledge="1900" data-monthly="150" title="Record Payment">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10 H21"/><path d="M7 15 H10"/></svg>
+                </button>
+                <button class="icon-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4 H4 a2 2 0 0 0 -2 2 V20 a2 2 0 0 0 2 2 H18 a2 2 0 0 0 2 -2 V13"/><path d="M18.5 2.5 a2.121 2.121 0 0 1 3 3 L12 15 H9 V12 z"/></svg></button>
+                <button class="icon-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg></button>
+              </div></td>
+            </tr>
+            <tr>
+              <td class="sr latin">M016</td>
+              <td><div class="member-cell"><div class="mini-avatar">YK</div><div><div class="nm">Yusuf Khan</div><div class="em latin">yusuf.k@email.com</div></div></div></td>
+              <td class="hide-mob"><span class="desig" data-translate="r_donor">Donor</span></td>
+              <td class="hide-mob amt latin">₹4,000</td>
+              <td class="hide-mob progress-cell"><div class="progress"><span style="width:100%"></span></div><div class="progress-meta latin"><span>12/12</span><span>100%</span></div></td>
+              <td><span class="status-pill ok" data-translate="st_full">Full Paid</span></td>
+              <td><div class="row-actions">
+                <button class="icon-btn record-pay-btn" data-member="M016" data-name="Yusuf Khan" data-init="YK" data-pledge="4000" data-monthly="325" title="Record Payment">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10 H21"/><path d="M7 15 H10"/></svg>
+                </button>
+                <button class="icon-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4 H4 a2 2 0 0 0 -2 2 V20 a2 2 0 0 0 2 2 H18 a2 2 0 0 0 2 -2 V13"/><path d="M18.5 2.5 a2.121 2.121 0 0 1 3 3 L12 15 H9 V12 z"/></svg></button>
+                <button class="icon-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg></button>
+              </div></td>
+            </tr>
+            <tr>
+              <td class="sr latin">M021</td>
+              <td><div class="member-cell"><div class="mini-avatar" style="background:linear-gradient(135deg,#5a8a3a,#3d6325)">BK</div><div><div class="nm">Banda e Khuda HRP</div><div class="em" data-translate="ref_yaseen">Ref: Yaseen Bhai</div></div></div></td>
+              <td class="hide-mob"><span class="desig" data-translate="r_donor">Donor</span></td>
+              <td class="hide-mob amt latin">₹12,000</td>
+              <td class="hide-mob progress-cell"><div class="progress"><span style="width:100%"></span></div><div class="progress-meta latin"><span>12/12</span><span>100%</span></div></td>
+              <td><span class="status-pill ok" data-translate="st_full">Full Paid</span></td>
+              <td><div class="row-actions">
+                <button class="icon-btn record-pay-btn" data-member="M021" data-name="Banda e Khuda HRP" data-init="BK" data-pledge="12000" data-monthly="1000" title="Record Payment">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10 H21"/><path d="M7 15 H10"/></svg>
+                </button>
+                <button class="icon-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4 H4 a2 2 0 0 0 -2 2 V20 a2 2 0 0 0 2 2 H18 a2 2 0 0 0 2 -2 V13"/><path d="M18.5 2.5 a2.121 2.121 0 0 1 3 3 L12 15 H9 V12 z"/></svg></button>
+                <button class="icon-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg></button>
+              </div></td>
+            </tr>
+            <tr>
+              <td class="sr latin">M009</td>
+              <td><div class="member-cell"><div class="mini-avatar" style="background:linear-gradient(135deg,#a8a8a8,#6b6b6b)">NA</div><div><div class="nm">Naseem Ansari</div><div class="em latin">+91 99••• ••117</div></div></div></td>
+              <td class="hide-mob"><span class="desig" data-translate="r_trustee">Trustee</span></td>
+              <td class="hide-mob amt latin">₹0</td>
+              <td class="hide-mob progress-cell"><div class="progress"><span style="width:0%"></span></div><div class="progress-meta latin"><span>0/12</span><span>0%</span></div></td>
+              <td><span class="status-pill danger" data-translate="st_notst">Not Started</span></td>
+              <td><div class="row-actions">
+                <button class="icon-btn record-pay-btn" data-member="M009" data-name="Naseem Ansari" data-init="NA" data-pledge="0" data-monthly="0" title="Record Payment">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10 H21"/><path d="M7 15 H10"/></svg>
+                </button>
+                <button class="icon-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4 H4 a2 2 0 0 0 -2 2 V20 a2 2 0 0 0 2 2 H18 a2 2 0 0 0 2 -2 V13"/><path d="M18.5 2.5 a2.121 2.121 0 0 1 3 3 L12 15 H9 V12 z"/></svg></button>
+                <button class="icon-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg></button>
+              </div></td>
+            </tr>
+            <tr>
+              <td class="sr latin">M029</td>
+              <td><div class="member-cell"><div class="mini-avatar">HM</div><div><div class="nm">Haider Momin</div><div class="em latin">haider.m@email.com</div></div></div></td>
+              <td class="hide-mob"><span class="desig" data-translate="r_donor">Donor</span></td>
+              <td class="hide-mob amt latin">₹1,800</td>
+              <td class="hide-mob progress-cell"><div class="progress"><span style="width:17%"></span></div><div class="progress-meta latin"><span>2/12</span><span>17%</span></div></td>
+              <td><span class="status-pill warn" data-translate="st_feb">Pending Feb</span></td>
+              <td><div class="row-actions">
+                <button class="icon-btn record-pay-btn" data-member="M029" data-name="Haider Momin" data-init="HM" data-pledge="1800" data-monthly="150" title="Record Payment">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10 H21"/><path d="M7 15 H10"/></svg>
+                </button>
+                <button class="icon-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4 H4 a2 2 0 0 0 -2 2 V20 a2 2 0 0 0 2 2 H18 a2 2 0 0 0 2 -2 V13"/><path d="M18.5 2.5 a2.121 2.121 0 0 1 3 3 L12 15 H9 V12 z"/></svg></button>
+                <button class="icon-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg></button>
+              </div></td>
+            </tr>
+            <tr id="noResultsRow" style="display:none">
+              <td colspan="7" class="no-results">
+                <div class="no-results-inner">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="7"/><path d="M16 16 L21 21"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+                  <div>
+                    <div class="nr-title" data-translate="nr_title">No members match your search</div>
+                    <div class="nr-sub"><span data-translate="nr_sub">Try a different name or member ID. Searched:</span> <strong id="nrTerm"></strong></div>
+                  </div>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        </div>
+
+        <!-- Mobile member cards (visible only on mobile) -->
+        <div class="members-cards" id="membersCards">
+          <div class="mc-row" data-search="m001 maulana izhar ahmed qadri sahab qibla monitor">
+            <div class="mc-avatar">MQ</div>
+            <div class="mc-body">
+              <div class="mc-line1"><span class="mc-id">M001</span><span class="mc-name">Maulana Izhar Ahmed</span></div>
+              <div class="mc-line2"><span class="desig gold" data-translate="r_monitor">Monitor</span><span class="status-pill ok" data-translate="st_full">Full Paid</span><span class="mc-amt latin">₹1,200</span></div>
+              <div class="mc-progress"><div class="progress"><span style="width:100%"></span></div><span class="progress-meta latin"><span>12/12</span></span></div>
+            </div>
+            <button class="mc-action record-pay-btn" data-member="M001" data-name="Maulana Izhar Ahmed Qadri" data-init="MQ" data-pledge="1200" data-monthly="100" aria-label="Record Payment">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10 H21"/><path d="M7 15 H10"/></svg>
+            </button>
+          </div>
+          <div class="mc-row" data-search="m002 yaseen unawala president yaseen@hkfound.org">
+            <div class="mc-avatar">YU</div>
+            <div class="mc-body">
+              <div class="mc-line1"><span class="mc-id">M002</span><span class="mc-name">Yaseen Unawala</span></div>
+              <div class="mc-line2"><span class="desig gold" data-translate="r_president">President</span><span class="status-pill warn" data-translate="st_pend">Pending Mar</span><span class="mc-amt latin">₹900</span></div>
+              <div class="mc-progress"><div class="progress"><span style="width:17%"></span></div><span class="progress-meta latin"><span>2/12</span></span></div>
+            </div>
+            <button class="mc-action record-pay-btn" data-member="M002" data-name="Yaseen Unawala" data-init="YU" data-pledge="900" data-monthly="300" aria-label="Record Payment">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10 H21"/><path d="M7 15 H10"/></svg>
+            </button>
+          </div>
+          <div class="mc-row" data-search="m003 zeeshan momin vc president vice">
+            <div class="mc-avatar">ZM</div>
+            <div class="mc-body">
+              <div class="mc-line1"><span class="mc-id">M003</span><span class="mc-name">Zeeshan Momin</span></div>
+              <div class="mc-line2"><span class="desig" data-translate="r_vp">Vc. President</span><span class="status-pill warn" data-translate="st_apr">Pending Apr</span><span class="mc-amt latin">₹1,000</span></div>
+              <div class="mc-progress"><div class="progress"><span style="width:33%"></span></div><span class="progress-meta latin"><span>4/12</span></span></div>
+            </div>
+            <button class="mc-action record-pay-btn" data-member="M003" data-name="Zeeshan Momin" data-init="ZM" data-pledge="1000" data-monthly="250" aria-label="Record Payment">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10 H21"/><path d="M7 15 H10"/></svg>
+            </button>
+          </div>
+          <div class="mc-row" data-search="m005 sahil momin jt treasurer joint">
+            <div class="mc-avatar">SM</div>
+            <div class="mc-body">
+              <div class="mc-line1"><span class="mc-id">M005</span><span class="mc-name">Sahil Momin</span></div>
+              <div class="mc-line2"><span class="desig" data-translate="r_jt">Jt. Treasurer</span><span class="status-pill ok" data-translate="st_full">Full Paid</span><span class="mc-amt latin">₹1,900</span></div>
+              <div class="mc-progress"><div class="progress"><span style="width:100%"></span></div><span class="progress-meta latin"><span>12/12</span></span></div>
+            </div>
+            <button class="mc-action record-pay-btn" data-member="M005" data-name="Sahil Momin" data-init="SM" data-pledge="1900" data-monthly="150" aria-label="Record Payment">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10 H21"/><path d="M7 15 H10"/></svg>
+            </button>
+          </div>
+          <div class="mc-row" data-search="m016 yusuf khan donor">
+            <div class="mc-avatar">YK</div>
+            <div class="mc-body">
+              <div class="mc-line1"><span class="mc-id">M016</span><span class="mc-name">Yusuf Khan</span></div>
+              <div class="mc-line2"><span class="desig" data-translate="r_donor">Donor</span><span class="status-pill ok" data-translate="st_full">Full Paid</span><span class="mc-amt latin">₹4,000</span></div>
+              <div class="mc-progress"><div class="progress"><span style="width:100%"></span></div><span class="progress-meta latin"><span>12/12</span></span></div>
+            </div>
+            <button class="mc-action record-pay-btn" data-member="M016" data-name="Yusuf Khan" data-init="YK" data-pledge="4000" data-monthly="325" aria-label="Record Payment">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10 H21"/><path d="M7 15 H10"/></svg>
+            </button>
+          </div>
+          <div class="mc-row" data-search="m021 banda e khuda hrp donor yaseen">
+            <div class="mc-avatar" style="background:linear-gradient(135deg,#5a8a3a,#3d6325)">BK</div>
+            <div class="mc-body">
+              <div class="mc-line1"><span class="mc-id">M021</span><span class="mc-name">Banda e Khuda HRP</span></div>
+              <div class="mc-line2"><span class="desig" data-translate="r_donor">Donor</span><span class="status-pill ok" data-translate="st_full">Full Paid</span><span class="mc-amt latin">₹12,000</span></div>
+              <div class="mc-progress"><div class="progress"><span style="width:100%"></span></div><span class="progress-meta latin"><span>12/12</span></span></div>
+            </div>
+            <button class="mc-action record-pay-btn" data-member="M021" data-name="Banda e Khuda HRP" data-init="BK" data-pledge="12000" data-monthly="1000" aria-label="Record Payment">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10 H21"/><path d="M7 15 H10"/></svg>
+            </button>
+          </div>
+          <div class="mc-row" data-search="m009 naseem ansari trustee">
+            <div class="mc-avatar" style="background:linear-gradient(135deg,#a8a8a8,#6b6b6b)">NA</div>
+            <div class="mc-body">
+              <div class="mc-line1"><span class="mc-id">M009</span><span class="mc-name">Naseem Ansari</span></div>
+              <div class="mc-line2"><span class="desig" data-translate="r_trustee">Trustee</span><span class="status-pill danger" data-translate="st_notst">Not Started</span><span class="mc-amt latin">₹0</span></div>
+              <div class="mc-progress"><div class="progress"><span style="width:0%"></span></div><span class="progress-meta latin"><span>0/12</span></span></div>
+            </div>
+            <button class="mc-action record-pay-btn" data-member="M009" data-name="Naseem Ansari" data-init="NA" data-pledge="0" data-monthly="0" aria-label="Record Payment">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10 H21"/><path d="M7 15 H10"/></svg>
+            </button>
+          </div>
+          <div class="mc-row" data-search="m029 haider momin donor">
+            <div class="mc-avatar">HM</div>
+            <div class="mc-body">
+              <div class="mc-line1"><span class="mc-id">M029</span><span class="mc-name">Haider Momin</span></div>
+              <div class="mc-line2"><span class="desig" data-translate="r_donor">Donor</span><span class="status-pill warn" data-translate="st_feb">Pending Feb</span><span class="mc-amt latin">₹1,800</span></div>
+              <div class="mc-progress"><div class="progress"><span style="width:17%"></span></div><span class="progress-meta latin"><span>2/12</span></span></div>
+            </div>
+            <button class="mc-action record-pay-btn" data-member="M029" data-name="Haider Momin" data-init="HM" data-pledge="1800" data-monthly="150" aria-label="Record Payment">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10 H21"/><path d="M7 15 H10"/></svg>
+            </button>
+          </div>
+          <div class="mc-row no-results-card" id="noResultsCard" style="display:none">
+            <div class="no-results-inner" style="margin: 24px auto; grid-column: 1 / -1">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="7"/><path d="M16 16 L21 21"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+              <div>
+                <div class="nr-title" data-translate="nr_title">No members match your search</div>
+                <div class="nr-sub"><span data-translate="nr_sub">Try a different name or member ID. Searched:</span> <strong id="nrTermMob"></strong></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="table-foot">
+          <span class="latin"><span data-translate="page_info">Showing</span> <span id="visibleCount">8</span><span id="visibleTotal" style="display:none"></span> <span data-translate="page_of">of</span> <span id="totalCount">128</span> <span data-translate="page_members">members</span></span>
+          <div class="pager" id="adminPager">
+            <button>‹</button>
+            <button class="active">1</button>
+            <button>2</button>
+            <button>3</button>
+            <button>…</button>
+            <button>16</button>
+            <button>›</button>
+          </div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <!-- Drawer backdrop (mobile only, when sidebar drawer opens) -->
+  <div class="drawer-backdrop" id="adminBackdrop" onclick="document.getElementById('adminSidebar').classList.remove('open'); this.classList.remove('open')"></div>
+
+  <!-- Mobile bottom tab bar (admin set) -->
+  <nav class="bottom-tabs" aria-label="Primary navigation">
+    <button class="bt-item">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+      <span data-translate="bt_overview">Overview</span>
+    </button>
+    <button class="bt-item active">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      <span data-translate="bt_members">Members</span>
+    </button>
+    <button class="bt-item bt-fab">
+      <span class="bt-fab-circle">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 5 V19 M5 12 H19"/></svg>
+      </span>
+      <span data-translate="bt_add">Add</span>
+    </button>
+    <button class="bt-item">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M14 3 H6 a2 2 0 0 0 -2 2 V19 a2 2 0 0 0 2 2 H18 a2 2 0 0 0 2 -2 V9 Z"/><path d="M14 3 V9 H20"/><path d="M8 13 H16"/><path d="M8 17 H13"/></svg>
+      <span data-translate="bt_reports">Reports</span>
+    </button>
+    <button class="bt-item">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="8" r="4"/><path d="M4 21 a8 8 0 0 1 16 0"/></svg>
+      <span data-translate="bt_more">More</span>
+    </button>
+  </nav>
+</section>
+
+
+<!-- ============================================================
+     MODAL — RECORD PAYMENT (Admin)
+============================================================ -->
+<div class="modal-overlay" id="recordPayModal">
+  <div class="modal">
+    <div class="modal-head">
+      <div class="modal-head-l">
+        <div class="modal-eyebrow latin"><span data-translate="m_admin_action">Admin Action</span> · <span id="rpMemberId">M016</span></div>
+        <h2 data-translate="m_record_title">Record Payment</h2>
+      </div>
+      <button class="modal-close" id="rpClose" aria-label="Close">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+
+    <div class="modal-body">
+
+      <!-- Member identity strip -->
+      <div class="rp-member">
+        <div class="mini-avatar lg" id="rpAvatar">YK</div>
+        <div>
+          <div class="rp-member-name" id="rpMemberName">Yusuf Khan</div>
+          <div class="rp-member-sub latin"><span data-translate="m_pledge">Pledge</span>: ₹<span id="rpPledge">4,000</span> / yr · <span data-translate="m_monthly">Monthly</span>: ₹<span id="rpMonthly">325</span></div>
+        </div>
+        <div class="rp-attribution">
+          <div class="rp-att-label" data-translate="m_recording_as">Recording as</div>
+          <div class="rp-att-name">Yaseen Unawala <span class="rp-att-role" data-translate="m_president">President</span></div>
+        </div>
+      </div>
+
+      <!-- Form grid -->
+      <div class="form-grid">
+
+        <div class="form-field">
+          <label data-translate="m_for_month">For month</label>
+          <select id="rpMonth" class="form-select">
+            <option>January 2026</option>
+            <option>February 2026</option>
+            <option>March 2026</option>
+            <option selected>April 2026</option>
+            <option>May 2026</option>
+            <option>June 2026</option>
+            <option>July 2026</option>
+            <option>August 2026</option>
+            <option>September 2026</option>
+            <option>October 2026</option>
+            <option>November 2026</option>
+            <option>December 2026</option>
+          </select>
+        </div>
+
+        <div class="form-field">
+          <label data-translate="m_category">Category</label>
+          <select id="rpCategory" class="form-select">
+            <option data-translate-opt="m_cat_chanda">Monthly Chanda</option>
+            <option data-translate-opt="m_cat_zakat">Zakat</option>
+            <option data-translate-opt="m_cat_fitrah">Fitrah</option>
+            <option data-translate-opt="m_cat_general">General Donation</option>
+            <option data-translate-opt="m_cat_misc">Special Cause / Misc</option>
+          </select>
+        </div>
+
+        <div class="form-field span-2">
+          <label data-translate="m_amount_received">Amount received</label>
+          <div class="amt-input-row">
+            <span class="amt-prefix">₹</span>
+            <input type="number" id="rpAmount" value="325" min="0" />
+            <div class="amt-presets">
+              <button type="button" class="amt-preset latin" data-amt="325">325</button>
+              <button type="button" class="amt-preset latin" data-amt="500">500</button>
+              <button type="button" class="amt-preset latin" data-amt="1000">1,000</button>
+              <button type="button" class="amt-preset latin" data-amt="2100">2,100</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-field">
+          <label data-translate="m_pay_method">Payment method</label>
+          <div class="method-grid">
+            <button type="button" class="method-btn active" data-method="cash">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="6" width="18" height="12" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M3 10 H6 M21 10 H18 M3 14 H6 M21 14 H18"/></svg>
+              <span data-translate="m_method_cash">Cash</span>
+            </button>
+            <button type="button" class="method-btn" data-method="cheque">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="6" width="20" height="12" rx="1.5"/><path d="M6 11 H14 M6 14 H10"/><path d="M16 11 H18 M16 14 H18"/></svg>
+              <span data-translate="m_method_cheque">Cheque</span>
+            </button>
+            <button type="button" class="method-btn" data-method="upi">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
+              <span data-translate="m_method_upi">UPI</span>
+            </button>
+            <button type="button" class="method-btn" data-method="bank">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 9 L12 3 L21 9 H3 Z"/><path d="M5 9 V18 M9 9 V18 M15 9 V18 M19 9 V18 M3 21 H21"/></svg>
+              <span data-translate="m_method_bank">Bank</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="form-field">
+          <label data-translate="m_received_on">Received on</label>
+          <input type="date" id="rpDate" class="form-select" value="2026-04-27" />
+        </div>
+
+        <div class="form-field" id="rpRefField">
+          <label data-translate="m_reference">Reference / Note (optional)</label>
+          <input type="text" id="rpRef" class="form-select" placeholder="e.g. Cheque #00342 · HDFC Bank" />
+        </div>
+
+        <div class="form-field span-2">
+          <label class="checkbox">
+            <input type="checkbox" id="rpNotify" checked />
+            <span data-translate="m_notify">Notify <strong id="rpNotifyName">Yusuf Khan</strong> via email + send PDF receipt</span>
+          </label>
+        </div>
+
+      </div>
+
+      <!-- Summary preview card -->
+      <div class="rp-preview">
+        <div class="rp-preview-l">
+          <div class="rp-preview-label" data-translate="m_preview_title">This entry will appear in the member's ledger as</div>
+          <div class="rp-preview-line">
+            <strong>April 2026 · <span id="rpPreviewCat">Monthly Chanda</span></strong>
+            <span class="rp-attrib-pill latin"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="width:10px;height:10px"><path d="M12 2 L4 7 L4 17 L12 22 L20 17 L20 7 Z"/></svg> <span data-translate="m_recorded_by_admin">Recorded by admin</span></span>
+          </div>
+          <div class="rp-preview-meta latin">
+            <span id="rpPreviewMethod">Cash</span> · <span id="rpPreviewDate">Apr 27, 2026</span> · Receipt RCT-2026-XXX
+          </div>
+        </div>
+        <div class="rp-preview-amt latin">₹<span id="rpPreviewAmt">325</span></div>
+      </div>
+
+    </div>
+
+    <div class="modal-foot">
+      <button class="btn-secondary" id="rpCancel"><span data-translate="m_cancel">Cancel</span></button>
+      <button class="btn-secondary"><span data-translate="m_save_continue">Save &amp; record another</span></button>
+      <button class="btn-primary modal-primary" data-translate="m_record_payment">Record payment</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  /* -- Translations dictionary -- */
+  const translations = {
+    en: {
+      eyebrow: "Zakat · Fitrah · Chanda",
+      hero_title: 'A trusted ledger for <em>collective good.</em>',
+      hero_sub: "Replace the spreadsheet. Honour every contribution with a transparent, member-first record — built for our community, in your language.",
+      hf_collected: "Collected YTD", hf_members: "Members", hf_months: "Months tracked",
+      welcome_back: "Welcome back",
+      login_sub: "Sign in to view your contribution ledger.",
+      member: "Member", admin: "Admin",
+      member_id: "Member ID or Email", password: "Password",
+      remember: "Remember me", forgot: "Forgot password?",
+      signin: "Sign in", or: "or",
+      new_member: "New member? Speak to your treasurer to receive your Member ID.",
+      nav_overview: "Overview", nav_dashboard: "Dashboard", nav_my_profile: "My Profile",
+      nav_payments: "Payments", nav_receipts: "Receipts", nav_history: "History",
+      nav_account: "Account", nav_settings: "Settings", nav_logout: "Sign out",
+      member_portal: "Member Portal · 2026", welcome_yusuf: "Welcome back, Yusuf",
+      role_donor: "Donor · Member since Jan 2024", annual_pledge: "Annual Pledge",
+      stat_paid: "Paid this year", stat_paid_delta: "₹275 over pledge",
+      stat_pending: "April Pending", stat_pending_delta: "Due Apr 30",
+      stat_lifetime: "Lifetime giving", stat_lifetime_delta: "Since Jan 2024",
+      stat_streak: "Generosity", stat_streak_delta: "Of pledged amount",
+      year_ledger: "Year Ledger · 2026", year_ledger_sub: "A month-by-month view of your contributions",
+      export: "Export",
+      tag_extra: "+ Extra",
+      tag_admin: "ADMIN",
+      lg_paid: "Paid", lg_bonus: "Paid + Extra", lg_pending: "Pending",
+      lg_skip: "Skipped", lg_upcoming: "Upcoming",
+      qp_title: "Make a Contribution",
+      qp_sub: "Pay the pledge amount, contribute extra, or skip this month with a note. Your choice — every contribution is logged transparently.",
+      qp_mode_pledge: "Pledge", qp_mode_extra: "Give Extra", qp_mode_skip: "Skip Month",
+      qp_mode_custom_amt: "Custom", qp_mode_skip_amt: "—",
+      qp_month: "Month", qp_category: "Category", qp_chanda: "Monthly Chanda",
+      qp_amount: "Amount", qp_pledge_amt: "Pledge amount", qp_pay: "Pay with UPI",
+      qp_allocate: "Allocate to", qp_above_pledge: "Above pledge",
+      qp_skip_warn: "Skipping marks April as deferred. You can still pay later — your annual total will reflect the gap.",
+      qp_skip_reason: "Reason (optional)",
+      qp_confirm_skip: "Confirm skip for April",
+      qp_change_mind: "Changed my mind",
+      opt_chanda: "Monthly Chanda", opt_zakat: "Zakat", opt_fitrah: "Fitrah",
+      opt_general: "General Donation", opt_misc: "Special Cause / Misc",
+      opt_skip_finance: "Financial constraint this month",
+      opt_skip_travel: "Travelling / unavailable",
+      opt_skip_pay_later: "Will pay later in the year",
+      opt_skip_other: "Other",
+      recent_receipts: "Recent Receipts", recent_receipts_sub: "Tap any receipt to view or download as PDF",
+      view_all: "View all",
+      rec_mar: "March 2026 · Chanda", rec_feb: "February 2026 · Chanda",
+      rec_jan: "January 2026 · Chanda", rec_dec: "Zakat · Ramadan 2025",
+      nav_manage: "Manage", nav_overview2: "Overview", nav_members: "Members",
+      nav_collections: "Collections", nav_reports: "Reports", nav_reminders: "Reminders",
+      nav_settings_label: "Settings", nav_org: "Organization", nav_audit: "Audit Log",
+      admin_console: "Admin Console · Members", member_directory: "Member Directory",
+      add_member: "Add Member",
+      adm_total: "Total Collected · YTD", adm_total_d: "+18% vs last year",
+      adm_active: "Active Members", adm_active_d: "+4 this quarter",
+      adm_pending: "Pending Dues", adm_pending_d: "22 members behind",
+      adm_apr: "April Collection", adm_apr_d: "42% of monthly target",
+      filt_all: "All Members", filt_full: "Full Paid", filt_partial: "Partial",
+      filt_pending: "Pending", filt_not: "Not Started", filt_more: "More filters",
+      all_members: "All Members", all_members_sub: "Showing 8 of 128 · Sorted by Member ID",
+      export_csv: "Export CSV", send_reminder: "Remind All Pending",
+      th_id: "ID", th_member: "Member", th_role: "Role", th_total: "Paid",
+      th_progress: "Progress", th_status: "Status", th_actions: "",
+      r_monitor: "Monitor", r_president: "President", r_vp: "Vc. President",
+      r_jt: "Jt. Treasurer", r_donor: "Donor", r_trustee: "Trustee",
+      st_full: "Full Paid", st_pend: "Pending Mar", st_apr: "Pending Apr",
+      st_feb: "Pending Feb", st_notst: "Not Started",
+      ref_yaseen: "Ref: Yaseen Bhai",
+      page_info: "Showing", page_of: "of", page_members: "members",
+      nr_title: "No members match your search",
+      nr_sub: "Try a different name or member ID. Searched:",
+      // Notification banner & receipt admin tag
+      banner_text: '<strong>Yaseen Unawala</strong> recorded your <strong>March 2026</strong> chanda payment of <strong>₹325</strong> in cash. Receipt RCT-2026-014 has been added to your ledger.',
+      badge_admin: "By Admin",
+      rec_mar_method: "Cash · Yaseen Unawala",
+      // Record Payment modal
+      m_admin_action: "Admin Action",
+      m_record_title: "Record Payment",
+      m_pledge: "Pledge", m_monthly: "Monthly",
+      m_recording_as: "Recording as", m_president: "President",
+      m_for_month: "For month", m_category: "Category",
+      m_amount_received: "Amount received",
+      m_pay_method: "Payment method",
+      m_method_cash: "Cash", m_method_cheque: "Cheque",
+      m_method_upi: "UPI", m_method_bank: "Bank Transfer",
+      m_received_on: "Received on",
+      m_reference: "Reference / Note (optional)",
+      m_notify: 'Notify <strong id="rpNotifyName">Yusuf Khan</strong> via email + send PDF receipt',
+      m_preview_title: "This entry will appear in the member's ledger as",
+      m_recorded_by_admin: "Recorded by admin",
+      m_cancel: "Cancel",
+      m_save_continue: "Save & record another",
+      m_record_payment: "Record payment",
+      m_cat_chanda: "Monthly Chanda", m_cat_zakat: "Zakat", m_cat_fitrah: "Fitrah",
+      m_cat_general: "General Donation", m_cat_misc: "Special Cause / Misc",
+      // Mobile-specific
+      mob_assalam: "Assalamu Alaikum",
+      mob_yusuf: "Yusuf Khan",
+      mob_dashboard: "Dashboard",
+      mob_admin_greet: "Admin · Yaseen",
+      mob_members: "Members",
+      member_portal_short: "2026 Ledger",
+      admin_console_short: "Admin Console",
+      bt_home: "Home", bt_receipts: "Receipts", bt_pay: "Pay",
+      bt_history: "History", bt_profile: "Profile",
+      bt_overview: "Overview", bt_members: "Members", bt_add: "Add",
+      bt_reports: "Reports", bt_more: "More"
+    },
+    ur: {
+      eyebrow: "زکوٰۃ · فطرہ · چندہ",
+      hero_title: 'اجتماعی بھلائی کا <em>قابلِ اعتماد دفتر</em>',
+      hero_sub: "اسپریڈشیٹ کو الوداع کہیں۔ ہر چندہ کا شفاف، ممبر کے لیے بنایا گیا ریکارڈ — ہماری برادری کے لیے، آپ کی زبان میں۔",
+      hf_collected: "اب تک جمع", hf_members: "ممبران", hf_months: "ماہ",
+      welcome_back: "خوش آمدید",
+      login_sub: "اپنا چندہ دیکھنے کے لیے سائن اِن کریں۔",
+      member: "ممبر", admin: "ایڈمن",
+      member_id: "ممبر آئی ڈی یا ای میل", password: "پاسورڈ",
+      remember: "مجھے یاد رکھیں", forgot: "پاسورڈ بھول گئے؟",
+      signin: "سائن اِن", or: "یا",
+      new_member: "نئے ممبر؟ اپنا ممبر آئی ڈی حاصل کرنے کے لیے ٹریژرر سے رابطہ کریں۔",
+      nav_overview: "جائزہ", nav_dashboard: "ڈیش بورڈ", nav_my_profile: "میری پروفائل",
+      nav_payments: "ادائیگیاں", nav_receipts: "رسیدیں", nav_history: "تاریخ",
+      nav_account: "اکاؤنٹ", nav_settings: "ترتیبات", nav_logout: "سائن آؤٹ",
+      member_portal: "ممبر پورٹل · ۲۰۲۶", welcome_yusuf: "خوش آمدید، یوسف",
+      role_donor: "ڈونر · جنوری ۲۰۲۴ سے ممبر", annual_pledge: "سالانہ وعدہ",
+      stat_paid: "اس سال ادا کیا", stat_paid_delta: "وعدے سے ۲۷۵ روپے زیادہ",
+      stat_pending: "اپریل زیرِ التواء", stat_pending_delta: "۳۰ اپریل تک",
+      stat_lifetime: "کُل عطیات", stat_lifetime_delta: "جنوری ۲۰۲۴ سے",
+      stat_streak: "سخاوت", stat_streak_delta: "وعدے کے مقابلے میں",
+      year_ledger: "سالانہ کھاتہ · ۲۰۲۶", year_ledger_sub: "آپ کے چندے کی ماہ بہ ماہ تفصیل",
+      export: "برآمد کریں",
+      tag_extra: "+ اضافی",
+      tag_admin: "ایڈمن",
+      lg_paid: "ادا شدہ", lg_bonus: "ادا + اضافی", lg_pending: "زیرِ التواء",
+      lg_skip: "چھوڑا گیا", lg_upcoming: "آنے والے",
+      qp_title: "چندہ دیں",
+      qp_sub: "وعدہ کی رقم ادا کریں، اضافی دیں، یا اس مہینے کو چھوڑ دیں۔ آپ کا انتخاب — ہر چندہ شفاف طور پر درج ہوتا ہے۔",
+      qp_mode_pledge: "وعدہ", qp_mode_extra: "اضافی دیں", qp_mode_skip: "چھوڑیں",
+      qp_mode_custom_amt: "اپنی رقم", qp_mode_skip_amt: "—",
+      qp_month: "مہینہ", qp_category: "زمرہ", qp_chanda: "ماہانہ چندہ",
+      qp_amount: "رقم", qp_pledge_amt: "وعدہ کی رقم", qp_pay: "یو پی آئی سے ادا کریں",
+      qp_allocate: "تخصیص کریں", qp_above_pledge: "وعدے سے زیادہ",
+      qp_skip_warn: "چھوڑنے سے اپریل ملتوی شمار ہوگا۔ آپ بعد میں بھی ادا کر سکتے ہیں۔",
+      qp_skip_reason: "وجہ (اختیاری)",
+      qp_confirm_skip: "اپریل چھوڑنے کی تصدیق کریں",
+      qp_change_mind: "ارادہ بدل گیا",
+      opt_chanda: "ماہانہ چندہ", opt_zakat: "زکوٰۃ", opt_fitrah: "فطرہ",
+      opt_general: "عمومی عطیہ", opt_misc: "خاص مقصد / متفرق",
+      opt_skip_finance: "اس مہینے مالی مشکل",
+      opt_skip_travel: "سفر پر / دستیاب نہیں",
+      opt_skip_pay_later: "سال میں بعد میں ادا کریں گے",
+      opt_skip_other: "دیگر",
+      recent_receipts: "حالیہ رسیدیں", recent_receipts_sub: "کسی بھی رسید پر کلک کریں دیکھنے یا پی ڈی ایف ڈاؤن لوڈ کرنے کے لیے",
+      view_all: "سب دیکھیں",
+      rec_mar: "مارچ ۲۰۲۶ · چندہ", rec_feb: "فروری ۲۰۲۶ · چندہ",
+      rec_jan: "جنوری ۲۰۲۶ · چندہ", rec_dec: "زکوٰۃ · رمضان ۲۰۲۵",
+      nav_manage: "انتظام", nav_overview2: "جائزہ", nav_members: "ممبران",
+      nav_collections: "وصولی", nav_reports: "رپورٹس", nav_reminders: "یاد دہانیاں",
+      nav_settings_label: "ترتیبات", nav_org: "تنظیم", nav_audit: "آڈٹ لاگ",
+      admin_console: "ایڈمن کنسول · ممبران", member_directory: "ممبر ڈائریکٹری",
+      add_member: "نیا ممبر",
+      adm_total: "کل وصولی · سال", adm_total_d: "گزشتہ سال سے +۱۸٪",
+      adm_active: "فعال ممبران", adm_active_d: "اس سہ ماہی +۴",
+      adm_pending: "زیرِ التواء", adm_pending_d: "۲۲ ممبران پیچھے",
+      adm_apr: "اپریل کی وصولی", adm_apr_d: "ماہانہ ہدف کا ۴۲٪",
+      filt_all: "تمام ممبران", filt_full: "مکمل ادا", filt_partial: "جزوی",
+      filt_pending: "زیرِ التواء", filt_not: "شروع نہیں", filt_more: "مزید فلٹرز",
+      all_members: "تمام ممبران", all_members_sub: "۱۲۸ میں سے ۸ دکھائے جا رہے ہیں",
+      export_csv: "سی ایس وی برآمد", send_reminder: "تمام کو یاد دہانی",
+      th_id: "آئی ڈی", th_member: "ممبر", th_role: "عہدہ", th_total: "ادا شدہ",
+      th_progress: "پیش رفت", th_status: "حیثیت", th_actions: "",
+      r_monitor: "نگران", r_president: "صدر", r_vp: "نائب صدر",
+      r_jt: "جوائنٹ خزانچی", r_donor: "ڈونر", r_trustee: "ٹرسٹی",
+      st_full: "مکمل ادا", st_pend: "مارچ زیرِ التواء", st_apr: "اپریل زیرِ التواء",
+      st_feb: "فروری زیرِ التواء", st_notst: "شروع نہیں",
+      ref_yaseen: "حوالہ: یاسین بھائی",
+      page_info: "دکھائے جا رہے", page_of: "میں سے", page_members: "ممبران",
+      nr_title: "کوئی ممبر آپ کی تلاش سے میل نہیں کھاتا",
+      nr_sub: "دوسرا نام یا ممبر آئی ڈی آزمائیں۔ تلاش کیا:",
+      // Notification banner & receipt admin tag
+      banner_text: '<strong>یاسین انوالا</strong> نے آپ کا <strong>مارچ ۲۰۲۶</strong> چندہ ₹۳۲۵ نقد درج کیا ہے۔ رسید RCT-2026-014 آپ کے کھاتے میں شامل کر دی گئی ہے۔',
+      badge_admin: "ایڈمن کی طرف سے",
+      rec_mar_method: "نقد · یاسین انوالا",
+      // Record Payment modal
+      m_admin_action: "ایڈمن عمل",
+      m_record_title: "ادائیگی درج کریں",
+      m_pledge: "وعدہ", m_monthly: "ماہانہ",
+      m_recording_as: "بطور درج کر رہا ہے", m_president: "صدر",
+      m_for_month: "مہینہ", m_category: "زمرہ",
+      m_amount_received: "وصول شدہ رقم",
+      m_pay_method: "طریقہ ادائیگی",
+      m_method_cash: "نقد", m_method_cheque: "چیک",
+      m_method_upi: "یو پی آئی", m_method_bank: "بینک ٹرانسفر",
+      m_received_on: "وصول کی تاریخ",
+      m_reference: "حوالہ / نوٹ (اختیاری)",
+      m_notify: 'ای میل + پی ڈی ایف رسید <strong id="rpNotifyName">یوسف خان</strong> کو بھیجیں',
+      m_preview_title: "یہ اندراج ممبر کے کھاتے میں اس طرح ظاہر ہوگا",
+      m_recorded_by_admin: "ایڈمن کا اندراج",
+      m_cancel: "منسوخ",
+      m_save_continue: "محفوظ کریں اور دوسرا درج کریں",
+      m_record_payment: "ادائیگی درج کریں",
+      m_cat_chanda: "ماہانہ چندہ", m_cat_zakat: "زکوٰۃ", m_cat_fitrah: "فطرہ",
+      m_cat_general: "عمومی عطیہ", m_cat_misc: "خاص مقصد / متفرق",
+      // Mobile-specific
+      mob_assalam: "السلام علیکم",
+      mob_yusuf: "یوسف خان",
+      mob_dashboard: "ڈیش بورڈ",
+      mob_admin_greet: "ایڈمن · یاسین",
+      mob_members: "ممبران",
+      member_portal_short: "۲۰۲۶ کھاتہ",
+      admin_console_short: "ایڈمن کنسول",
+      bt_home: "گھر", bt_receipts: "رسیدیں", bt_pay: "ادا کریں",
+      bt_history: "تاریخ", bt_profile: "پروفائل",
+      bt_overview: "جائزہ", bt_members: "ممبران", bt_add: "نیا",
+      bt_reports: "رپورٹس", bt_more: "مزید"
+    }
+  };
+
+  /* -- Screen routing -- */
+  document.querySelectorAll('.dev-bar [data-go]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const target = btn.dataset.go;
+      document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+      document.getElementById(target).classList.add('active');
+      document.querySelectorAll('.dev-bar [data-go]').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.dev-bar [data-go="'+target+'"]').forEach(b => b.classList.add('active'));
+      window.scrollTo({top:0, behavior:'instant'});
+    });
+  });
+
+  /* -- Sign-in button forwards to user dashboard -- */
+  document.querySelectorAll('[data-go="user"]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+      document.getElementById('user').classList.add('active');
+      document.querySelectorAll('.dev-bar [data-go]').forEach(b => b.classList.remove('active'));
+      document.querySelector('.dev-bar [data-go="user"]').classList.add('active');
+    });
+  });
+
+  /* -- Login segmented control -- */
+  document.querySelectorAll('#loginSeg button').forEach(b => {
+    b.addEventListener('click', () => {
+      document.querySelectorAll('#loginSeg button').forEach(x => x.classList.remove('active'));
+      b.classList.add('active');
+    });
+  });
+
+  /* -- Filter chips -- */
+  document.querySelectorAll('.chip').forEach(c => {
+    c.addEventListener('click', () => {
+      const sib = c.parentElement.querySelectorAll('.chip');
+      sib.forEach(x => x.classList.remove('active'));
+      c.classList.add('active');
+    });
+  });
+
+  /* ============================================================
+     ADMIN MEMBER SEARCH (works for desktop table + mobile cards)
+  ============================================================ */
+  (function() {
+    const inputs = [
+      { input: document.getElementById('adminSearch'), wrap: document.getElementById('adminSearchWrap'), clear: document.getElementById('adminSearchClear') },
+      { input: document.getElementById('adminSearchMob'), wrap: document.getElementById('adminSearchWrapMob'), clear: document.getElementById('adminSearchClearMob') }
+    ].filter(x => x.input);
+    if (inputs.length === 0) return;
+
+    const tbody = document.getElementById('membersTbody');
+    const cards = document.getElementById('membersCards');
+
+    const noResultsRow = document.getElementById('noResultsRow');
+    const noResultsCard = document.getElementById('noResultsCard');
+    const nrTerm = document.getElementById('nrTerm');
+    const nrTermMob = document.getElementById('nrTermMob');
+    const visibleCountEl = document.getElementById('visibleCount');
+    const totalCountEl = document.getElementById('totalCount');
+    const pager = document.getElementById('adminPager');
+
+    const TOTAL = 128;
+
+    // Table rows + cache
+    const tableRows = tbody ? Array.from(tbody.querySelectorAll('tr')).filter(r => r.id !== 'noResultsRow') : [];
+    tableRows.forEach(row => {
+      const id = row.querySelector('.sr')?.textContent.trim() || '';
+      const name = row.querySelector('.member-cell .nm')?.textContent.trim() || '';
+      const sub = row.querySelector('.member-cell .em')?.textContent.trim() || '';
+      const desig = row.querySelector('.desig')?.textContent.trim() || '';
+      row.dataset.search = (id + ' ' + name + ' ' + sub + ' ' + desig).toLowerCase();
+      row._original = {
+        id: row.querySelector('.sr'),
+        name: row.querySelector('.member-cell .nm'),
+        sub: row.querySelector('.member-cell .em')
+      };
+      row._originalText = {
+        id: row._original.id?.textContent || '',
+        name: row._original.name?.textContent || '',
+        sub: row._original.sub?.textContent || ''
+      };
+    });
+
+    // Card rows already have data-search set via markup
+    const cardRows = cards ? Array.from(cards.querySelectorAll('.mc-row')).filter(r => !r.classList.contains('no-results-card')) : [];
+    cardRows.forEach(row => {
+      row._original = {
+        id: row.querySelector('.mc-id'),
+        name: row.querySelector('.mc-name')
+      };
+      row._originalText = {
+        id: row._original.id?.textContent || '',
+        name: row._original.name?.textContent || ''
+      };
+    });
+
+    function escapeHtml(s) {
+      return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+    function escapeReg(s) {
+      return s.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
+    }
+    function highlight(el, original, term) {
+      if (!el) return;
+      if (!term) { el.textContent = original; return; }
+      const re = new RegExp('(' + escapeReg(term) + ')', 'gi');
+      el.innerHTML = escapeHtml(original).replace(re, '<span class="search-hl">$1</span>');
+    }
+
+    function applyFilter(term) {
+      term = (term || '').trim().toLowerCase();
+      // Sync both inputs visually
+      inputs.forEach(({ input, wrap }) => {
+        if (input.value.trim().toLowerCase() !== term) input.value = term;
+        wrap?.classList.toggle('has-value', term.length > 0);
+      });
+
+      let visible = 0;
+
+      // Desktop table
+      tableRows.forEach(row => {
+        const matches = !term || row.dataset.search.includes(term);
+        row.style.display = matches ? '' : 'none';
+        if (matches) {
+          highlight(row._original.id, row._originalText.id, term);
+          highlight(row._original.name, row._originalText.name, term);
+          highlight(row._original.sub, row._originalText.sub, term);
+        } else {
+          if (row._original.id) row._original.id.textContent = row._originalText.id;
+          if (row._original.name) row._original.name.textContent = row._originalText.name;
+          if (row._original.sub) row._original.sub.textContent = row._originalText.sub;
+        }
+      });
+
+      // Mobile cards
+      cardRows.forEach(row => {
+        const matches = !term || (row.dataset.search || '').includes(term);
+        row.style.display = matches ? '' : 'none';
+        if (matches) {
+          visible++;
+          highlight(row._original.id, row._originalText.id, term);
+          highlight(row._original.name, row._originalText.name, term);
+        } else {
+          if (row._original.id) row._original.id.textContent = row._originalText.id;
+          if (row._original.name) row._original.name.textContent = row._originalText.name;
+        }
+      });
+      // Fallback if no card list (count via table)
+      if (cardRows.length === 0) {
+        visible = tableRows.filter(r => r.style.display !== 'none').length;
+      }
+
+      // No-results states
+      if (noResultsRow) {
+        noResultsRow.style.display = (visible === 0 && term) ? '' : 'none';
+        if (nrTerm) nrTerm.textContent = '"' + term + '"';
+      }
+      if (noResultsCard) {
+        noResultsCard.style.display = (visible === 0 && term) ? 'block' : 'none';
+        if (nrTermMob) nrTermMob.textContent = '"' + term + '"';
+      }
+
+      if (visibleCountEl) visibleCountEl.textContent = visible;
+      if (totalCountEl) totalCountEl.textContent = term ? visible : TOTAL;
+
+      if (pager) pager.style.visibility = term ? 'hidden' : 'visible';
+    }
+
+    // Wire each input
+    inputs.forEach(({ input, clear }) => {
+      input.addEventListener('input', () => applyFilter(input.value));
+      input.addEventListener('keydown', e => {
+        if (e.key === 'Escape') { input.value = ''; applyFilter(''); input.blur(); }
+      });
+      clear?.addEventListener('click', () => { applyFilter(''); input.focus(); });
+    });
+  })();
+
+  /* ============================================================
+     RECORD PAYMENT MODAL
+  ============================================================ */
+  const rpModal = document.getElementById('recordPayModal');
+  const rpEls = {
+    memberId: document.getElementById('rpMemberId'),
+    avatar: document.getElementById('rpAvatar'),
+    memberName: document.getElementById('rpMemberName'),
+    pledge: document.getElementById('rpPledge'),
+    monthly: document.getElementById('rpMonthly'),
+    amount: document.getElementById('rpAmount'),
+    month: document.getElementById('rpMonth'),
+    category: document.getElementById('rpCategory'),
+    date: document.getElementById('rpDate'),
+    notifyName: document.getElementById('rpNotifyName'),
+    previewCat: document.getElementById('rpPreviewCat'),
+    previewMethod: document.getElementById('rpPreviewMethod'),
+    previewDate: document.getElementById('rpPreviewDate'),
+    previewAmt: document.getElementById('rpPreviewAmt')
+  };
+
+  function fmtINR(n) {
+    return new Intl.NumberFormat('en-IN').format(n);
+  }
+  function fmtDate(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    return d.toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric' });
+  }
+
+  function openRecordPay(data) {
+    rpEls.memberId.textContent = data.member;
+    rpEls.avatar.textContent = data.init;
+    rpEls.memberName.textContent = data.name;
+    rpEls.pledge.textContent = fmtINR(data.pledge);
+    rpEls.monthly.textContent = fmtINR(data.monthly);
+    rpEls.notifyName.textContent = data.name;
+    // default amount = monthly pledge
+    rpEls.amount.value = data.monthly || 0;
+    document.querySelectorAll('.amt-preset').forEach(b => {
+      b.classList.toggle('active', parseInt(b.dataset.amt, 10) === data.monthly);
+    });
+    syncPreview();
+    rpModal.classList.add('open');
+    document.body.style.overflow = 'hidden';
+  }
+  function closeRecordPay() {
+    rpModal.classList.remove('open');
+    document.body.style.overflow = '';
+  }
+
+  function syncPreview() {
+    rpEls.previewAmt.textContent = fmtINR(parseInt(rpEls.amount.value, 10) || 0);
+    rpEls.previewCat.textContent = rpEls.category.options[rpEls.category.selectedIndex].textContent;
+    rpEls.previewDate.textContent = fmtDate(rpEls.date.value);
+    const activeMethod = document.querySelector('.method-btn.active');
+    if (activeMethod) rpEls.previewMethod.textContent = activeMethod.textContent.trim();
+  }
+
+  document.querySelectorAll('.record-pay-btn').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      openRecordPay({
+        member: btn.dataset.member,
+        name: btn.dataset.name,
+        init: btn.dataset.init,
+        pledge: parseInt(btn.dataset.pledge, 10) || 0,
+        monthly: parseInt(btn.dataset.monthly, 10) || 0
+      });
+    });
+  });
+
+  document.getElementById('rpClose').addEventListener('click', closeRecordPay);
+  document.getElementById('rpCancel').addEventListener('click', closeRecordPay);
+  rpModal.addEventListener('click', e => {
+    if (e.target === rpModal) closeRecordPay();
+  });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && rpModal.classList.contains('open')) closeRecordPay();
+  });
+
+  // Live preview updates
+  ['input', 'change'].forEach(ev => {
+    rpEls.amount.addEventListener(ev, () => {
+      const v = parseInt(rpEls.amount.value, 10) || 0;
+      document.querySelectorAll('.amt-preset').forEach(b => {
+        b.classList.toggle('active', parseInt(b.dataset.amt, 10) === v);
+      });
+      syncPreview();
+    });
+    rpEls.category.addEventListener(ev, syncPreview);
+    rpEls.month.addEventListener(ev, syncPreview);
+    rpEls.date.addEventListener(ev, syncPreview);
+  });
+
+  // Amount presets
+  document.querySelectorAll('.amt-preset').forEach(b => {
+    b.addEventListener('click', () => {
+      document.querySelectorAll('.amt-preset').forEach(x => x.classList.remove('active'));
+      b.classList.add('active');
+      rpEls.amount.value = b.dataset.amt;
+      syncPreview();
+    });
+  });
+
+  // Method buttons
+  document.querySelectorAll('.method-btn').forEach(b => {
+    b.addEventListener('click', () => {
+      document.querySelectorAll('.method-btn').forEach(x => x.classList.remove('active'));
+      b.classList.add('active');
+      syncPreview();
+    });
+  });
+
+  /* -- Payment composer mode switching -- */
+  document.querySelectorAll('.qp-mode').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const mode = btn.dataset.mode;
+      document.querySelectorAll('.qp-mode').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      document.querySelectorAll('.qp-panel').forEach(p => p.classList.remove('active'));
+      const panel = document.querySelector('.qp-panel[data-panel="'+mode+'"]');
+      if (panel) panel.classList.add('active');
+    });
+  });
+
+  /* -- Preset amount chips -- */
+  const PLEDGE = 325;
+  document.querySelectorAll('.qp-preset').forEach(p => {
+    p.addEventListener('click', () => {
+      document.querySelectorAll('.qp-preset').forEach(x => x.classList.remove('active'));
+      p.classList.add('active');
+      const amt = parseInt(p.dataset.amt, 10);
+      const input = document.getElementById('qpAmount');
+      if (input) input.value = amt;
+      updateExtraDelta(amt);
+    });
+  });
+
+  /* -- Live update of "above pledge" delta when typing -- */
+  const amtInput = document.getElementById('qpAmount');
+  if (amtInput) {
+    amtInput.addEventListener('input', () => {
+      const v = parseInt(amtInput.value, 10) || 0;
+      // un-highlight presets when user types a custom number
+      document.querySelectorAll('.qp-preset').forEach(p => {
+        p.classList.toggle('active', parseInt(p.dataset.amt, 10) === v);
+      });
+      updateExtraDelta(v);
+    });
+  }
+  function updateExtraDelta(v) {
+    const el = document.getElementById('qpExtraDelta');
+    if (!el) return;
+    const diff = v - PLEDGE;
+    if (diff > 0) el.textContent = '+ ₹' + diff.toLocaleString('en-IN');
+    else if (diff === 0) el.textContent = '₹0';
+    else el.textContent = '− ₹' + Math.abs(diff).toLocaleString('en-IN');
+  }
+
+  /* -- Language toggle -- */
+  document.querySelectorAll('.lang-btn').forEach(b => {
+    b.addEventListener('click', () => {
+      const lang = b.dataset.lang;
+      document.documentElement.dataset.lang = lang;
+      document.documentElement.lang = lang;
+      document.querySelectorAll('.lang-btn').forEach(x => x.classList.remove('active'));
+      b.classList.add('active');
+      const dict = translations[lang];
+      document.querySelectorAll('[data-translate]').forEach(el => {
+        const k = el.dataset.translate;
+        if (dict[k] !== undefined) el.innerHTML = dict[k];
+      });
+      // <option> elements use textContent (innerHTML breaks in some browsers)
+      document.querySelectorAll('[data-translate-opt]').forEach(el => {
+        const k = el.dataset.translateOpt;
+        if (dict[k] !== undefined) el.textContent = dict[k];
+      });
+      // Optional: shows only in Urdu
+      document.querySelectorAll('[data-translate-only]').forEach(el => {
+        el.style.display = (el.dataset.translateOnly === lang) ? '' : 'none';
+      });
+    });
+  });
+
+  // initial: hide Urdu-only elements (like the calligraphy line) when EN
+  document.querySelectorAll('[data-translate-only]').forEach(el => {
+    if (el.dataset.translateOnly !== 'en') el.style.display = 'none';
+  });
+</script>
+
+</body>
+</html>

@@ -9,6 +9,7 @@
 //   4. Bottom nav is animated between tab switches.
 
 import { signIn, signOut, observeAuth, observeAdminEmails, isAdminEmail, isOwner } from "./auth.js";
+import { ensureMemberExists } from "./members-self.js";
 import { renderHome } from "./home.js";
 import { renderDiscussion } from "./discussion.js";
 import { renderHandover } from "./handover.js";
@@ -52,6 +53,10 @@ function boot() {
       renderSignIn();
       return;
     }
+    // Mirror Android: every sign-in upserts /members/{uid}. New users get a
+    // fresh M-XXX id; existing users get their displayName/email refreshed.
+    ensureMemberExists(user).catch(e => console.warn("ensureMemberExists", e));
+
     const couldBeAdmin = isOwner(user.email) || isAdminEmail(user.email, adminEmails);
     if (couldBeAdmin && role === null) {
       renderRolePicker();

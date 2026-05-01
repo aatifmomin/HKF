@@ -1138,3 +1138,70 @@ input, textarea, select {
   font-weight: 700;
   color: var(--gold-dark);
 }
+
+/* 3-dot kebab button + popover menu (admin Members CRUD) -------- */
+
+.row-kebab {
+  border: none;
+  background: transparent;
+  color: var(--text-2);
+  font-size: 18px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  cursor: pointer;
+  flex-shrink: 0;
+  margin-left: 4px;
+}
+.row-kebab:hover { background: rgba(154,106,31,0.08); color: var(--gold-dark); }
+
+.kebab-menu {
+  position: fixed;
+  background: var(--surface);
+  border: 1px solid rgba(154,106,31,0.20);
+  border-radius: 12px;
+  box-shadow: var(--shadow-l);
+  padding: 6px;
+  min-width: 180px;
+  z-index: 500;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  animation: kebabIn 140ms ease-out;
+}
+@keyframes kebabIn {
+  from { opacity: 0; transform: translateY(-4px) scale(0.96); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+.kebab-menu button {
+  text-align: left;
+  padding: 9px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--text);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+}
+.kebab-menu button:hover { background: rgba(154,106,31,0.08); color: var(--gold-dark); }
+.kebab-menu button.danger { color: var(--red-fg); }
+.kebab-menu button.danger:hover { background: var(--red-bg); }
+
+/* Need to relax member-row layout to fit the kebab */
+.member-row {
+  position: relative;
+}
+
+/* Select inputs in modal forms */
+.field select {
+  border: 1px solid rgba(154,106,31,0.30);
+  border-radius: 8px;
+  padding: 9px 12px;
+  font-size: 14px;
+  background: var(--surface);
+  outline: none;
+  font-family: inherit;
+  width: 100%;
+}
+.field select:focus { border-color: var(--gold-dark); }
