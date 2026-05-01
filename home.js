@@ -56,7 +56,7 @@ let handoversCache = [];
 export function renderHome(container) {
   container.innerHTML = `
     <div class="home-header">
-      <div class="logo-circle">HK</div>
+      <img class="logo-img" src="Logo.png" alt="HKF logo" />
       <div class="home-title">Hasnain Karimain Foundation</div>
       <div class="home-subtitle" id="home-greeting">Welcome</div>
     </div>

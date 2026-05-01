@@ -1205,3 +1205,13 @@ input, textarea, select {
   width: 100%;
 }
 .field select:focus { border-color: var(--gold-dark); }
+
+/* Real logo image. Used on sign-in card, role picker, and Home header. */
+.logo-img {
+  width: 110px;
+  height: 110px;
+  object-fit: contain;
+  display: block;
+  /* Subtle drop shadow to make the logo pop on cream background */
+  filter: drop-shadow(0 4px 8px rgba(154, 106, 31, 0.18));
+}

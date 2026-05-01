@@ -76,7 +76,7 @@ function renderSignIn() {
     <div class="shell">
       <div class="signin-screen">
         <div class="signin-card">
-          <div class="logo-circle">HK</div>
+          <img class="logo-img" src="Logo.png" alt="HKF logo" />
           <div class="signin-title">Hasnain Karimain Foundation</div>
           <div class="signin-subtitle">Sign in to continue</div>
           <button class="gold-button" id="signin-btn">Continue with Google</button>
@@ -104,7 +104,7 @@ function renderRolePicker() {
     <div class="shell">
       <div class="signin-screen">
         <div class="signin-card">
-          <div class="logo-circle">HK</div>
+          <img class="logo-img" src="Logo.png" alt="HKF logo" />
           <div class="signin-title">Choose role</div>
           <div class="signin-subtitle">Signed in as ${escapeHtml(user.email || "")}</div>
           <button class="gold-button" id="role-admin">Continue as Admin</button>
