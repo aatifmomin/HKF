@@ -351,7 +351,11 @@ function openRecordPaymentDialog(member) {
   });
 }
 
-// ---------------- Edit member (name + role) ----------------
+// ---------------- Edit member (name + email + ID + role + admin toggle) ----------------
+
+// Role values match Android MemberRole. Admin status is tracked separately
+// in /admins, so it's a checkbox here, not part of the role dropdown.
+const MEMBER_ROLES = ["Founder", "President", "VP", "Treasurer", "Technical Director", "Monitor", "Member"];
 
 function openEditMemberDialog(member) {
   const dialog = document.createElement("div");
@@ -369,11 +373,18 @@ function openEditMemberDialog(member) {
           <input type="email" id="em-email" />
         </label>
         <label class="field">
+          <span>Member ID</span>
+          <input type="text" id="em-id" maxlength="16" placeholder="e.g. M001" />
+        </label>
+        <label class="field">
           <span>Role</span>
           <select id="em-role">
-            <option value="Member">Member</option>
-            <option value="Admin">Admin</option>
+            ${MEMBER_ROLES.map(r => `<option value="${r}">${r}</option>`).join("")}
           </select>
+        </label>
+        <label class="field" style="flex-direction:row;align-items:center;gap:8px;">
+          <input type="checkbox" id="em-admin" style="width:auto;flex:none;" />
+          <span style="font-weight:500;color:var(--text);">Also an admin</span>
         </label>
       </div>
       <div class="modal-actions">
@@ -386,7 +397,25 @@ function openEditMemberDialog(member) {
 
   dialog.querySelector("#em-name").value = member.displayName || "";
   dialog.querySelector("#em-email").value = member.email || "";
-  dialog.querySelector("#em-role").value = member.role || "Member";
+  dialog.querySelector("#em-id").value = member.memberId || "";
+
+  // Pick the role dropdown value, defaulting to Member if the stored value
+  // isn't in our enum (legacy data).
+  const currentRole = MEMBER_ROLES.includes(member.role) ? member.role : "Member";
+  dialog.querySelector("#em-role").value = currentRole;
+
+  // Determine if member is currently admin by checking /admins for their email
+  let wasAdmin = false;
+  (async () => {
+    try {
+      const adminsSnap = await get(ref(db, "admins"));
+      const target = Object.values(adminsSnap.val() || {}).find(
+        a => (a?.emailLower || a?.email || "").toLowerCase() === (member.email || "").toLowerCase()
+      );
+      wasAdmin = !!target;
+      dialog.querySelector("#em-admin").checked = wasAdmin;
+    } catch {}
+  })();
 
   function close() { document.body.removeChild(dialog); }
   dialog.querySelector("#em-cancel").addEventListener("click", close);
@@ -395,38 +424,52 @@ function openEditMemberDialog(member) {
   dialog.querySelector("#em-save").addEventListener("click", async () => {
     const name = dialog.querySelector("#em-name").value.trim();
     const email = dialog.querySelector("#em-email").value.trim();
+    const newId = dialog.querySelector("#em-id").value.trim();
     const role = dialog.querySelector("#em-role").value;
+    const wantsAdmin = dialog.querySelector("#em-admin").checked;
+
     if (!name) { window.showSnackbar?.("Name required"); return; }
+    if (!newId) { window.showSnackbar?.("Member ID required"); return; }
+    if (!/^[A-Za-z0-9_-]{1,16}$/.test(newId)) {
+      window.showSnackbar?.("ID: letters, digits, - or _ only (max 16)");
+      return;
+    }
 
     try {
+      // Uniqueness check on member ID if it changed
+      if (newId !== member.memberId) {
+        const allSnap = await get(ref(db, "members"));
+        const collision = Object.entries(allSnap.val() || {}).some(
+          ([uid, rec]) => uid !== member.uid && (rec.memberId || "").toLowerCase() === newId.toLowerCase()
+        );
+        if (collision) {
+          window.showSnackbar?.("That Member ID is already taken");
+          return;
+        }
+      }
+
+      // Update the member row (all fields together)
       await update(ref(db, "members/" + member.uid), {
         displayName: name,
         email,
+        memberId: newId,
         role
       });
 
-      // If role changed, mirror it into /admins.
-      // Adding to admins requires a unique push key; removing requires we find
-      // the existing key by email match.
-      if (role === "Admin" && member.role !== "Admin") {
-        const adminsSnap = await get(ref(db, "admins"));
-        const existingByEmail = Object.entries(adminsSnap.val() || {}).find(
-          ([_, a]) => (a?.emailLower || a?.email || "").toLowerCase() === email.toLowerCase()
-        );
-        if (!existingByEmail) {
-          const newRef = push(ref(db, "admins"));
-          await set(newRef, {
-            email,
-            emailLower: email.toLowerCase(),
-            displayName: name,
-            addedByEmail: window.__currentUser?.email || "",
-            addedAtMillis: serverTimestamp()
-          });
-        }
-      } else if (role !== "Admin" && member.role === "Admin") {
+      // Mirror admin toggle to /admins
+      if (wantsAdmin && !wasAdmin && email) {
+        const adminRef = push(ref(db, "admins"));
+        await set(adminRef, {
+          email,
+          emailLower: email.toLowerCase(),
+          displayName: name,
+          addedByEmail: window.__currentUser?.email || "",
+          addedAtMillis: serverTimestamp()
+        });
+      } else if (!wantsAdmin && wasAdmin) {
         const adminsSnap = await get(ref(db, "admins"));
         const target = Object.entries(adminsSnap.val() || {}).find(
-          ([_, a]) => (a?.emailLower || a?.email || "").toLowerCase() === email.toLowerCase()
+          ([_, a]) => (a?.emailLower || a?.email || "").toLowerCase() === (member.email || "").toLowerCase()
         );
         if (target) {
           await fbRemove(ref(db, "admins/" + target[0]));
@@ -543,9 +586,12 @@ async function openAddMemberDialog() {
         <label class="field">
           <span>Role</span>
           <select id="am-role">
-            <option value="Member">Member</option>
-            <option value="Admin">Admin</option>
+            ${MEMBER_ROLES.map(r => `<option value="${r}" ${r === "Member" ? "selected" : ""}>${r}</option>`).join("")}
           </select>
+        </label>
+        <label class="field" style="flex-direction:row;align-items:center;gap:8px;">
+          <input type="checkbox" id="am-admin" style="width:auto;flex:none;" />
+          <span style="font-weight:500;color:var(--text);">Also an admin</span>
         </label>
       </div>
       <div class="modal-actions">
@@ -571,16 +617,12 @@ async function openAddMemberDialog() {
     const email = dialog.querySelector("#am-email").value.trim();
     const explicitId = dialog.querySelector("#am-id").value.trim();
     const role = dialog.querySelector("#am-role").value;
+    const wantsAdmin = dialog.querySelector("#am-admin").checked;
 
     if (!name) { window.showSnackbar?.("Name required"); return; }
     if (email && !email.includes("@")) { window.showSnackbar?.("Invalid email"); return; }
 
     try {
-      // Allocate or use explicit ID. Pending rows go under a generated push
-      // key (no real Firebase Auth uid yet) - when this person signs in,
-      // ensureMemberExists creates a new row keyed by their actual uid;
-      // admin should later merge or ignore the pending row.
-      // For simplicity in this turn, we just store under push key.
       let memberId = explicitId;
       if (!memberId) {
         memberId = await peekNextMemberId();
@@ -597,8 +639,7 @@ async function openAddMemberDialog() {
         pending: true
       });
 
-      // If admin role, mirror into /admins as well
-      if (role === "Admin" && email) {
+      if (wantsAdmin && email) {
         const adminRef = push(ref(db, "admins"));
         await set(adminRef, {
           email,

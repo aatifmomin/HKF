@@ -198,13 +198,43 @@ function drawChart(container, barsId, labelsId, maxId, bars) {
   maxEl.textContent = "max " + formatRupees(max);
 
   if (max <= 0) {
-    barsEl.innerHTML = bars.map(() => `<div class="chart-bar empty"></div>`).join("");
+    barsEl.innerHTML = bars.map(() => `<div class="chart-bar-col"><div class="chart-bar-amount"></div><div class="chart-bar empty"></div></div>`).join("");
   } else {
     barsEl.innerHTML = bars.map(b => {
       const pct = b.amountMinor > 0 ? Math.max(8, Math.round((b.amountMinor / max) * 100)) : 8;
       const cls = b.amountMinor > 0 ? "chart-bar" : "chart-bar empty";
-      return `<div class="${cls}" style="height:${pct}%"></div>`;
+      // Compact rupee label only when there's an actual amount; empty bars
+      // get an empty div to keep column heights consistent.
+      const amountLabel = b.amountMinor > 0 ? formatRupeesCompact(b.amountMinor) : "";
+      return `
+        <div class="chart-bar-col">
+          <div class="chart-bar-amount">${amountLabel}</div>
+          <div class="${cls}" style="height:${pct}%"></div>
+        </div>
+      `;
     }).join("");
   }
   labelsEl.innerHTML = bars.map(b => `<div class="chart-month-label">${monthLetter(b.key)}</div>`).join("");
+}
+
+/**
+ * Compact rupee formatter for the small label above each bar. "1,200" is too
+ * wide for the ~25px-wide bar columns on a 12-month chart, so we abbreviate:
+ *   < 1,000          -> "Rs500"
+ *   1,000-99,999     -> "1.2K"
+ *   100,000+         -> "1.2L"
+ * Keeping it dense lets all 12 labels fit even on narrow phones.
+ */
+function formatRupeesCompact(amountMinor) {
+  if (!amountMinor || amountMinor <= 0) return "";
+  const rupees = amountMinor / 100;
+  if (rupees < 1000) {
+    return "\u20B9" + Math.round(rupees);
+  }
+  if (rupees < 100000) {
+    const k = rupees / 1000;
+    return "\u20B9" + (k >= 10 ? Math.round(k) : k.toFixed(1)) + "K";
+  }
+  const l = rupees / 100000;
+  return "\u20B9" + (l >= 10 ? Math.round(l) : l.toFixed(1)) + "L";
 }

@@ -15,10 +15,12 @@ import { renderDiscussion } from "./discussion.js";
 import { renderHandover } from "./handover.js";
 import { renderPayments } from "./payments.js";
 import { renderMembers } from "./members.js";
+import { renderAdmins } from "./admins.js";
 
 // Tab definitions per role. Mirrors Android nav order.
 const ADMIN_TABS = [
   { id: "home",       label: "Home"     },
+  { id: "admins",     label: "Admins"   },
   { id: "members",    label: "Members"  },
   { id: "handover",   label: "Handover" },
   { id: "discussion", label: "Discuss"  }
@@ -184,6 +186,7 @@ function renderTab(tab) {
 
   switch (tab) {
     case "home":       activeTeardown = renderHome(anim); break;
+    case "admins":     activeTeardown = renderAdmins(anim); break;
     case "members":    activeTeardown = renderMembers(anim); break;
     case "handover":   activeTeardown = renderHandover(anim); break;
     case "discussion": activeTeardown = renderDiscussion(anim); break;
