@@ -84,6 +84,12 @@ export function renderHome(container) {
       </div>
     </div>
 
+    <div class="balance-card" id="balance-card">
+      <div class="balance-label">PENDING BALANCE</div>
+      <div class="balance-value" id="stat-pending">-</div>
+      <div class="balance-sub" id="stat-pending-sub">Collection minus handovers paid</div>
+    </div>
+
     <div class="chart-section">
       <div class="chart-label">Monthly collection</div>
       <div class="chart-card">
@@ -184,6 +190,21 @@ function rerender(container) {
   container.querySelector("#stat-handover-sub").textContent =
     handoverPaidCount + " paid - " + handoverPendingCount + " pending";
   container.querySelector("#stat-handover-total").textContent = formatRupees(totalHandoverMinor);
+
+  // Pending balance: collection still in hand minus handovers already paid out.
+  // If handovers exceed collection (shouldn't happen in normal operation but
+  // possible during data corrections), show the negative number so the admin
+  // sees the issue clearly rather than us silently clamping to zero.
+  const pendingMinor = totalCollectionMinor - totalHandoverMinor;
+  const pendingEl = container.querySelector("#stat-pending");
+  const balanceCardEl = container.querySelector("#balance-card");
+  pendingEl.textContent = formatRupees(Math.abs(pendingMinor)) + (pendingMinor < 0 ? " (over)" : "");
+  // Visual cue: green when there's a positive balance, amber when zero,
+  // red when somehow negative.
+  balanceCardEl.classList.remove("balance-positive", "balance-zero", "balance-negative");
+  if (pendingMinor > 0)       balanceCardEl.classList.add("balance-positive");
+  else if (pendingMinor === 0) balanceCardEl.classList.add("balance-zero");
+  else                         balanceCardEl.classList.add("balance-negative");
 
   drawChart(container, "collection-bars", "collection-labels", "collection-max", collectionBars);
   drawChart(container, "handover-bars", "handover-labels", "handover-max", handoverBars);
