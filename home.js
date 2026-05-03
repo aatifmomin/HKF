@@ -10,9 +10,9 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js";
 
 import { firebaseApp } from "./firebase-init.js";
+import { getSelectedYear, onYearChange, chartStartForYear } from "./year-state.js";
 
 const db = getDatabase(firebaseApp);
-const CHART_START = "2026-01";
 
 function formatRupees(amountMinor) {
   if (!amountMinor || amountMinor <= 0) return "\u20B90";
@@ -70,7 +70,7 @@ export function renderHome(container) {
       <div class="stat-card">
         <div class="stat-label">Total collection</div>
         <div class="stat-value" id="stat-collection">-</div>
-        <div class="stat-sub">Jan - Dec 2026</div>
+        <div class="stat-sub" id="stat-collection-window">Jan - Dec ${getSelectedYear()}</div>
       </div>
       <div class="stat-card">
         <div class="stat-label">Handovers</div>
@@ -140,10 +140,21 @@ export function renderHome(container) {
     rerender(container);
   });
 
+  // When the user picks a different year from the global picker, the chart
+  // window shifts and the "Jan - Dec YYYY" label updates. We don't need to
+  // re-fetch any RTDB data - same listeners keep firing, the rerender just
+  // recomputes against the new window.
+  const unsubYear = onYearChange(year => {
+    const lbl = container.querySelector("#stat-collection-window");
+    if (lbl) lbl.textContent = `Jan - Dec ${year}`;
+    rerender(container);
+  });
+
   return function teardown() {
     if (unsubMembers) unsubMembers();
     if (unsubPayments) unsubPayments();
     if (unsubHandovers) unsubHandovers();
+    unsubYear();
     unsubMembers = unsubPayments = unsubHandovers = null;
   };
 }
@@ -176,7 +187,7 @@ function rerender(container) {
     }
   });
 
-  const chartKeys = nextNMonthKeys(CHART_START, 12);
+  const chartKeys = nextNMonthKeys(chartStartForYear(), 12);
   const collectionBars = chartKeys.map(k => ({ key: k, amountMinor: collectionByMonth[k] || 0 }));
   const handoverBars = chartKeys.map(k => ({ key: k, amountMinor: handoverByMonth[k] || 0 }));
 

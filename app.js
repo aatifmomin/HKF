@@ -10,6 +10,7 @@
 
 import { signIn, signOut, observeAuth, observeAdminEmails, isAdminEmail, isOwner } from "./auth.js";
 import { ensureMemberExists } from "./members-self.js";
+import { getSelectedYear, getSupportedYears, setSelectedYear } from "./year-state.js";
 import { renderHome } from "./home.js";
 import { renderDiscussion } from "./discussion.js";
 import { renderHandover } from "./handover.js";
@@ -143,6 +144,10 @@ function renderShell() {
     <div class="shell">
       <div class="status-spacer"></div>
       <div class="top-bar">
+        <button class="year-picker" id="year-picker" aria-label="Select year">
+          <span id="year-picker-label">${getSelectedYear()}</span>
+          <span class="year-picker-caret">&#x25BE;</span>
+        </button>
         <button class="signout-pill" id="signout-btn">Sign out</button>
       </div>
       <div class="content" id="content"></div>
@@ -161,6 +166,12 @@ function renderShell() {
     role = null;
     window.__viewerIsAdmin = false;
     currentTab = "home";
+  });
+
+  // Year picker: tap opens a small popover with the supported years
+  document.getElementById("year-picker").addEventListener("click", e => {
+    e.stopPropagation();
+    openYearPickerPopover(e.currentTarget);
   });
 
   document.querySelectorAll(".nav-item").forEach(el => {
@@ -205,6 +216,47 @@ window.showSnackbar = function (text) {
   document.body.appendChild(el);
   setTimeout(() => el.remove(), 3000);
 };
+
+/**
+ * Show the year-picker popover anchored to the picker button. One option per
+ * supported year. Click outside to dismiss. Selecting a year updates the
+ * shared state and refreshes the visible label; subscribed screens re-render
+ * automatically via their onYearChange listeners.
+ */
+function openYearPickerPopover(anchorBtn) {
+  const existing = document.querySelector(".year-popover");
+  if (existing) { existing.remove(); return; }
+
+  const current = getSelectedYear();
+  const popover = document.createElement("div");
+  popover.className = "year-popover";
+  popover.innerHTML = getSupportedYears().map(y => `
+    <button class="year-option ${y === current ? 'active' : ''}" data-year="${y}">${y}</button>
+  `).join("");
+  document.body.appendChild(popover);
+
+  // Anchor below the button
+  const rect = anchorBtn.getBoundingClientRect();
+  popover.style.top = (rect.bottom + 4) + "px";
+  popover.style.left = rect.left + "px";
+
+  popover.querySelectorAll(".year-option").forEach(opt => {
+    opt.addEventListener("click", e => {
+      e.stopPropagation();
+      const y = parseInt(opt.dataset.year, 10);
+      setSelectedYear(y);
+      // Update the visible label on the picker button
+      const lbl = document.getElementById("year-picker-label");
+      if (lbl) lbl.textContent = y;
+      popover.remove();
+    });
+  });
+
+  // Click outside to close
+  setTimeout(() => {
+    document.addEventListener("click", function onDocClick() { popover.remove(); }, { once: true });
+  }, 0);
+}
 
 function escapeHtml(s) {
   return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
