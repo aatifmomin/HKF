@@ -113,11 +113,46 @@ export function renderHome(container) {
         <div class="chart-labels" id="handover-labels"></div>
       </div>
     </div>
+
+    <div class="download-section">
+      <div class="download-label">DOWNLOAD ANNUAL REPORT</div>
+      <div class="download-sub" id="download-sub">Selected year: ${getSelectedYear()}</div>
+      <div class="download-row">
+        <button class="download-btn" id="dl-pdf">
+          <span class="download-icon">\u2B07</span>
+          <span>PDF</span>
+        </button>
+        <button class="download-btn" id="dl-xlsx">
+          <span class="download-icon">\u2B07</span>
+          <span>Excel</span>
+        </button>
+      </div>
+      <div class="download-hint">Includes all members, payments, and handovers for the selected year.</div>
+    </div>
   `;
 
   const greetingEl = container.querySelector("#home-greeting");
   const user = window.__currentUser;
   greetingEl.textContent = user?.displayName ? "Welcome, " + user.displayName.split(" ")[0] : "Welcome";
+
+  // Download buttons. Show "Generating..." while async work runs; restore on
+  // completion or error. The report module is dynamically imported on first
+  // click so the heavy PDF/XLSX libs (loaded inside it from CDN) only kick
+  // in when actually needed.
+  const pdfBtn = container.querySelector("#dl-pdf");
+  const xlsxBtn = container.querySelector("#dl-xlsx");
+  pdfBtn.addEventListener("click", async () => {
+    await runDownload(pdfBtn, async () => {
+      const mod = await import("./year-report.js");
+      await mod.downloadYearReportPdf(getSelectedYear());
+    }, "PDF");
+  });
+  xlsxBtn.addEventListener("click", async () => {
+    await runDownload(xlsxBtn, async () => {
+      const mod = await import("./year-report.js");
+      await mod.downloadYearReportXlsx(getSelectedYear());
+    }, "Excel");
+  });
 
   unsubMembers = onValue(ref(db, "members"), snap => {
     const val = snap.val() || {};
@@ -147,6 +182,8 @@ export function renderHome(container) {
   const unsubYear = onYearChange(year => {
     const lbl = container.querySelector("#stat-collection-window");
     if (lbl) lbl.textContent = `Jan - Dec ${year}`;
+    const dlSub = container.querySelector("#download-sub");
+    if (dlSub) dlSub.textContent = `Selected year: ${year}`;
     rerender(container);
   });
 
@@ -160,7 +197,16 @@ export function renderHome(container) {
 }
 
 function rerender(container) {
-  const activeMembers = membersCache.filter(m => (m.totalPaidMinor || 0) > 0).length;
+  const year = getSelectedYear();
+  const yearPrefix = String(year) + "-";
+
+  // Active members for the selected year: those with at least one payment
+  // whose coversMonthKey falls in the year. Switching to a future year shows
+  // 0 active members, which matches the rest of the year-aware UI.
+  const activeMembers = membersCache.filter(m => {
+    const list = paymentsByMember[m.uid] || [];
+    return list.some(p => (p.coversMonthKey || "").startsWith(yearPrefix));
+  }).length;
   const totalMembers = membersCache.length;
 
   const collectionByMonth = {};
@@ -172,18 +218,29 @@ function rerender(container) {
     });
   });
 
+  // Handovers: scope paid handovers to the selected year by paidAtMillis;
+  // pending handovers are always counted (they have no paidAtMillis yet and
+  // represent open commitments regardless of which year you're viewing).
   const handoverByMonth = {};
   let handoverPaidCount = 0;
   let handoverPendingCount = 0;
+  let handoverInYearCount = 0;
   handoversCache.forEach(h => {
     if ((h.status || "pending") === "paid") {
-      handoverPaidCount++;
-      if ((h.amountMinor || 0) > 0 && (h.paidAtMillis || 0) > 0) {
-        const k = monthKeyFromMillis(h.paidAtMillis);
-        if (k) handoverByMonth[k] = (handoverByMonth[k] || 0) + h.amountMinor;
+      if ((h.paidAtMillis || 0) > 0) {
+        const paidYear = new Date(h.paidAtMillis).getFullYear();
+        if (paidYear === year) {
+          handoverPaidCount++;
+          handoverInYearCount++;
+          if ((h.amountMinor || 0) > 0) {
+            const k = monthKeyFromMillis(h.paidAtMillis);
+            if (k) handoverByMonth[k] = (handoverByMonth[k] || 0) + h.amountMinor;
+          }
+        }
       }
     } else {
       handoverPendingCount++;
+      handoverInYearCount++;
     }
   });
 
@@ -197,7 +254,7 @@ function rerender(container) {
   container.querySelector("#stat-active").textContent = activeMembers;
   container.querySelector("#stat-active-sub").textContent = "of " + totalMembers + " total";
   container.querySelector("#stat-collection").textContent = formatRupees(totalCollectionMinor);
-  container.querySelector("#stat-handover-count").textContent = handoversCache.length;
+  container.querySelector("#stat-handover-count").textContent = handoverInYearCount;
   container.querySelector("#stat-handover-sub").textContent =
     handoverPaidCount + " paid - " + handoverPendingCount + " pending";
   container.querySelector("#stat-handover-total").textContent = formatRupees(totalHandoverMinor);
@@ -269,4 +326,25 @@ function formatRupeesCompact(amountMinor) {
   }
   const l = rupees / 100000;
   return "\u20B9" + (l >= 10 ? Math.round(l) : l.toFixed(1)) + "L";
+}
+
+/**
+ * Run a download action with a button-disable + label-swap UX. Restores the
+ * button on success or failure. Uses the global snackbar to surface errors
+ * since downloads are asynchronous and the user may have scrolled away by
+ * the time the lib finishes loading from CDN.
+ */
+async function runDownload(button, action, kindLabel) {
+  const original = button.innerHTML;
+  button.disabled = true;
+  button.innerHTML = `<span class="download-icon">\u22EF</span><span>Generating...</span>`;
+  try {
+    await action();
+  } catch (e) {
+    console.error("download failed", e);
+    window.showSnackbar?.("Couldn't generate " + kindLabel + ": " + (e.message || "error"));
+  } finally {
+    button.disabled = false;
+    button.innerHTML = original;
+  }
 }

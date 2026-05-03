@@ -13,6 +13,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js";
 
 import { firebaseApp } from "./firebase-init.js";
+import { getSelectedYear, onYearChange } from "./year-state.js";
 
 const db = getDatabase(firebaseApp);
 
@@ -102,7 +103,22 @@ export function renderHandover(container) {
   });
 
   function rerender() {
-    let filtered = applications;
+    const year = getSelectedYear();
+
+    // Year-filter rule for handovers:
+    //   - Paid handovers: only those whose paidAtMillis falls in the
+    //     selected year. Bucketing matches the Home chart (cash-flow view).
+    //   - Pending handovers: always shown regardless of year. They have no
+    //     paidAtMillis yet and represent open commitments the admin still
+    //     needs to act on; hiding them per-year would risk losing track.
+    let yearScoped = applications.filter(a => {
+      const status = a.status || "pending";
+      if (status !== "paid") return true;
+      if (!a.paidAtMillis) return false;
+      return new Date(a.paidAtMillis).getFullYear() === year;
+    });
+
+    let filtered = yearScoped;
     if (filter !== "all") {
       filtered = filtered.filter(a => (a.status || "pending") === filter);
     }
@@ -118,12 +134,19 @@ export function renderHandover(container) {
       });
     }
 
-    const paidTotal = applications.filter(a => a.status === "paid").reduce((s, a) => s + (a.amountMinor || 0), 0);
-    if (applications.length === 0) {
-      subtitleEl.textContent = "Tap + New form to create your first application.";
+    // Stats reflect the year-scoped list (so "5 applications" matches what
+    // the user sees, not the all-time count).
+    const paidTotal = yearScoped
+      .filter(a => a.status === "paid")
+      .reduce((s, a) => s + (a.amountMinor || 0), 0);
+    if (yearScoped.length === 0) {
+      subtitleEl.textContent = "No applications in " + year + ". Pending applications also appear here.";
     } else {
-      const countText = applications.length === 1 ? "1 application" : applications.length + " applications";
-      subtitleEl.textContent = paidTotal > 0 ? countText + " - " + formatRupees(paidTotal) + " paid" : countText;
+      const countText = yearScoped.length === 1 ? "1 application" : yearScoped.length + " applications";
+      const yearNote = " (" + year + " + pending)";
+      subtitleEl.textContent = paidTotal > 0
+        ? countText + yearNote + " - " + formatRupees(paidTotal) + " paid"
+        : countText + yearNote;
     }
 
     if (filtered.length === 0) {
@@ -147,8 +170,11 @@ export function renderHandover(container) {
     });
   }
 
+  const unsubYear = onYearChange(() => rerender());
+
   return function teardown() {
     unsubHandovers();
+    unsubYear();
   };
 }
 

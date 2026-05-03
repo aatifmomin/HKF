@@ -21,6 +21,7 @@ import {
 
 import { firebaseApp } from "./firebase-init.js";
 import { peekNextMemberId } from "./members-self.js";
+import { getSelectedYear, onYearChange } from "./year-state.js";
 
 const db = getDatabase(firebaseApp);
 
@@ -38,15 +39,36 @@ function escapeHtml(s) {
   return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
-function statusFor(payments) {
+/**
+ * Compute a member's status pill for a given year window.
+ *
+ * Filters their payments to coversMonthKey within `year`, then:
+ *   - "Not started" if none
+ *   - "Full paid" if latest covered month >= today (capped at year-end)
+ *   - "Up to {Mon} {year}" otherwise
+ *
+ * Year capping prevents the future-year edge case (today=May 2026 viewing
+ * 2027): the reference month is min(today, dec-of-year), so a future year
+ * with no payments correctly reports "Not started" rather than misleading.
+ */
+function statusFor(payments, year) {
   if (!payments || payments.length === 0) return { label: "Not started", cls: "pill-grey" };
-  const months = payments.map(p => p.coversMonthKey).filter(Boolean).sort();
+  const yearPrefix = String(year) + "-";
+  const months = payments
+    .map(p => p.coversMonthKey)
+    .filter(k => k && k.startsWith(yearPrefix))
+    .sort();
+  if (months.length === 0) return { label: "Not started", cls: "pill-grey" };
   const latest = months[months.length - 1];
   const now = new Date();
-  const nowKey = now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, "0");
-  if (latest >= nowKey) return { label: "Full paid", cls: "pill-green" };
-  const [y, m] = latest.split("-");
-  return { label: "Up to " + MONTH_LABELS[parseInt(m, 10) - 1] + " " + y, cls: "pill-amber" };
+  const todayKey = now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, "0");
+  const yearStartKey = year + "-01";
+  const yearEndKey = year + "-12";
+  const referenceKey = todayKey < yearEndKey ? todayKey : yearEndKey;
+  if (referenceKey < yearStartKey) return { label: "Not started", cls: "pill-grey" };
+  if (latest >= referenceKey) return { label: "Full paid", cls: "pill-green" };
+  const [, m] = latest.split("-");
+  return { label: "Up to " + MONTH_LABELS[parseInt(m, 10) - 1] + " " + year, cls: "pill-amber" };
 }
 
 function nextNMonthKeys(start, n) {
@@ -129,9 +151,11 @@ export function renderMembers(container) {
       return blob.includes(queryStr);
     });
 
+    const year = getSelectedYear();
+
     if (filter !== "all") {
       filtered = filtered.filter(m => {
-        const s = statusFor(paymentsByMember[m.uid]);
+        const s = statusFor(paymentsByMember[m.uid], year);
         if (filter === "paid") return s.label === "Full paid";
         if (filter === "pending") return s.label.startsWith("Up to");
         if (filter === "notstarted") return s.label === "Not started";
@@ -146,7 +170,12 @@ export function renderMembers(container) {
       return;
     }
 
-    rowsEl.innerHTML = filtered.map(m => renderRow(m, isAdmin)).join("");
+    // Pre-compute status per member so renderRow can include the pill in the
+    // row UI without re-running the calc.
+    rowsEl.innerHTML = filtered.map(m => {
+      const s = statusFor(paymentsByMember[m.uid], year);
+      return renderRow(m, s, isAdmin);
+    }).join("");
 
     // Wire 3-dot menu buttons (admin only)
     if (isAdmin) {
@@ -160,18 +189,17 @@ export function renderMembers(container) {
     }
   }
 
+  const unsubYear = onYearChange(() => rerender());
+
   return function teardown() {
     unsubMembers();
     unsubPayments();
+    unsubYear();
     closeAnyOpenMenu();
   };
 }
 
-function renderRow(m, isAdmin) {
-  const s = statusFor(window.__paymentsByMember?.[m.uid] || null) || { label: "", cls: "" };
-  // We don't have access to paymentsByMember outside renderMembers's closure;
-  // status was already computed in the parent. Re-derive here from a global
-  // stash if available.
+function renderRow(m, status, isAdmin) {
   const role = m.role || "Member";
   return `
     <div class="member-row">
@@ -180,6 +208,9 @@ function renderRow(m, isAdmin) {
         <div class="member-name">${escapeHtml(m.displayName || (m.email || "-").split("@")[0])}</div>
         <div class="member-meta">
           <span class="pill pill-gold pill-tiny">${escapeHtml(role)}</span>
+          ${status && status.label
+            ? `<span class="pill ${status.cls} pill-tiny">${escapeHtml(status.label)}</span>`
+            : ""}
         </div>
         <div class="member-email">${escapeHtml(m.email || "")}</div>
       </div>

@@ -14,9 +14,9 @@ import {
 
 import { firebaseApp } from "./firebase-init.js";
 import { displayNameFor } from "./auth.js";
+import { getSelectedYear, onYearChange, chartStartForYear } from "./year-state.js";
 
 const db = getDatabase(firebaseApp);
-const CHART_START = "2026-01";
 const MONTH_LABELS = ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"];
 
 function formatRupees(minor) {
@@ -90,28 +90,58 @@ export function renderPayments(container) {
   });
 
   function rerender() {
-    const totalMinor = payments.reduce((s, p) => s + (p.amountMinor || 0), 0);
-    const chartKeys = nextNMonthKeys(CHART_START, 12);
-    const paidMonths = new Set(payments.map(p => p.coversMonthKey).filter(Boolean));
+    const year = getSelectedYear();
+    const chartKeys = nextNMonthKeys(chartStartForYear(year), 12);
+
+    // Filter payments + requests to the selected year so totals, bar, and
+    // history all reflect the chosen window. Year membership uses
+    // coversMonthKey ("YYYY-MM"), which is the canonical year a payment
+    // counts toward (regardless of when it was actually recorded).
+    const yearPrefix = String(year) + "-";
+    const yearPayments = payments.filter(p => (p.coversMonthKey || "").startsWith(yearPrefix));
+    const yearRequests = myRequests.filter(r => (r.coversMonthKey || "").startsWith(yearPrefix));
+
+    const totalMinor = yearPayments.reduce((s, p) => s + (p.amountMinor || 0), 0);
+    const paidMonths = new Set(yearPayments.map(p => p.coversMonthKey).filter(Boolean));
     const monthCells = chartKeys.map(k => ({ key: k, paid: paidMonths.has(k) }));
     const paidCount = monthCells.filter(c => c.paid).length;
 
+    // Status pill semantics with year filter:
+    //   - "Not started" if no payments in selected year
+    //   - "Full paid" if every month from Jan-of-year through min(today, Dec-of-year) is paid
+    //   - "Up to {month} {year}" otherwise (latest paid month within the year)
+    // Cap "today" at the selected year's end so future-year viewing doesn't
+    // misreport: viewing 2027 in May 2026 should show "Not started" (no 2027
+    // payments) rather than "Up to Jan 2027" surprises.
     const sortedPaid = [...paidMonths].sort();
     const latestPaid = sortedPaid[sortedPaid.length - 1];
     const now = new Date();
-    const nowKey = now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, "0");
+    const todayKey = now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, "0");
+    const yearEndKey = year + "-12";
+    const referenceKey = todayKey < yearEndKey ? todayKey : yearEndKey;
+    // referenceKey may pre-date the selected year; if so, the year is in the
+    // future and we expect "Not started".
+    const yearStartKey = year + "-01";
     let statusLabel, statusClass;
-    if (!latestPaid) { statusLabel = "Not started"; statusClass = "pill-grey"; }
-    else if (latestPaid >= nowKey) { statusLabel = "Full paid"; statusClass = "pill-green"; }
-    else {
-      const [ly, lm] = latestPaid.split("-");
-      statusLabel = "Up to " + MONTH_LABELS[parseInt(lm, 10) - 1].slice(0, 3) + " " + ly;
+    if (!latestPaid) {
+      statusLabel = "Not started";
+      statusClass = "pill-grey";
+    } else if (referenceKey < yearStartKey) {
+      // Selected year is entirely in the future relative to today
+      statusLabel = "Not started";
+      statusClass = "pill-grey";
+    } else if (latestPaid >= referenceKey) {
+      statusLabel = "Full paid";
+      statusClass = "pill-green";
+    } else {
+      const [, lm] = latestPaid.split("-");
+      statusLabel = "Up to " + MONTH_LABELS[parseInt(lm, 10) - 1].slice(0, 3) + " " + year;
       statusClass = "pill-amber";
     }
 
     const entries = [
-      ...payments.map(p => ({ kind: "confirmed", sortKey: p.recordedAtMillis || 0, payment: p })),
-      ...myRequests
+      ...yearPayments.map(p => ({ kind: "confirmed", sortKey: p.recordedAtMillis || 0, payment: p })),
+      ...yearRequests
         .filter(r => r.status === "pending" || r.status === "denied")
         .map(r => ({ kind: "request", sortKey: r.createdAtMillis || 0, request: r }))
     ].sort((a, b) => b.sortKey - a.sortKey);
@@ -123,7 +153,7 @@ export function renderPayments(container) {
           <div class="mp-total">${formatRupees(totalMinor)}</div>
           <span class="pill ${statusClass}">${escapeHtml(statusLabel)}</span>
         </div>
-        <div class="mp-window">Jan 2026 - Dec 2026 - ${paidCount} of 12 paid</div>
+        <div class="mp-window">Jan ${year} - Dec ${year} - ${paidCount} of 12 paid</div>
         <div class="mp-bar">
           ${monthCells.map(c => `<div class="mp-segment ${c.paid ? 'on' : ''}"></div>`).join("")}
         </div>
@@ -134,7 +164,7 @@ export function renderPayments(container) {
 
       <div class="section-header">PAYMENT HISTORY</div>
       ${entries.length === 0
-        ? `<div class="empty-state">No payments yet.</div>`
+        ? `<div class="empty-state">No payments in ${year}.</div>`
         : `<div class="rows-list">${entries.map(renderHistoryRow).join("")}</div>`
       }
     `;
@@ -144,9 +174,13 @@ export function renderPayments(container) {
     openRequestDialog(user);
   });
 
+  // Year-filter subscription: re-render when the global year picker changes.
+  const unsubYear = onYearChange(() => rerender());
+
   return function teardown() {
     unsubPayments();
     unsubRequests();
+    unsubYear();
   };
 }
 
