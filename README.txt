@@ -24,6 +24,7 @@ Files included:
   payments.js             — member's My Payments screen
   activity.js             — admin Activity feed (replaces Discussion)
   database.rules.json     — Realtime Database security rules (see below)
+  ANDROID-COMPAT.md       — attachment wire format + Android gap analysis
 
 REMOVED in this build: discussion.js. The group chat and the online-presence
 strip are gone from both clients.
@@ -93,8 +94,9 @@ Member Home simplified
 Attachment storage
 ------------------
 
-Attachments are base64 in the Realtime Database, with the blob and its index
-deliberately at different paths:
+Attachments are BARE base64 (no "data:...;base64," prefix, so Android's
+Base64.encodeToString/decode work directly) in the Realtime Database, with the
+blob and its index deliberately at different paths:
 
   /handovers/{key}/documents/{docId}  ->  { name, mime, sizeBytes }
   /handoverDocs/{key}/{docId}         ->  { ..., data }
@@ -107,6 +109,13 @@ The split matters: the handover list and the Activity feed subscribe to their
 parent nodes, so inline blobs would mean re-downloading every megabyte on
 every change. Blobs load only when someone taps View. An approved request and
 its payment row share one proofId rather than copying the image.
+
+The Android app in its current form has NO attachment support, so documents
+uploaded here are stored correctly but invisible there. See ANDROID-COMPAT.md
+for the exact format the Android side needs to implement, plus the other
+places the two clients have drifted apart (the join queue being the important
+one). Reading on the web is format-tolerant, so slight naming drift on the
+Android side still opens here.
 
 
 Database rules

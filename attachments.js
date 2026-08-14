@@ -1,14 +1,29 @@
 // Shared attachment plumbing for handover documents and payment proofs.
 //
-// Storage model (mirrors the Android app so both clients read each other's
-// files): the *blob* and the *index* live at different RTDB paths.
+// WIRE FORMAT - the Android client must match this exactly.
 //
-//   /handovers/{key}/documents/{docId}   -> { name, mime, sizeBytes }   (index)
-//   /handoverDocs/{key}/{docId}          -> { ..., data: "<base64>" }   (blob)
+//   /handovers/{key}/documents/{docId} = {      <- index, no blob
+//     name:      String,   // "receipt.jpg"
+//     mime:      String,   // "image/jpeg" | "application/pdf"
+//     sizeBytes: Long
+//   }
+//   /handoverDocs/{key}/{docId} = {             <- blob
+//     name, mime, sizeBytes,
+//     data:             String,  // BARE base64. NO "data:...;base64," prefix.
+//     uploadedByEmail:  String,
+//     uploadedAtMillis: Long
+//   }
 //
-//   /paymentRequests/{key}.proofId       -> "<proofId>"                 (index)
-//   /payments/{uid}/{key}.proofId        -> "<proofId>"                 (index)
-//   /paymentProofs/{proofId}             -> { ..., data: "<base64>" }   (blob)
+//   /paymentRequests/{key}.proofId = "<proofId>"    <- index
+//   /payments/{uid}/{key}.proofId = "<proofId>"     <- index (same id, shared)
+//   /paymentProofs/{proofId} = {                    <- blob
+//     name, mime, sizeBytes, data,
+//     uploadedByUid, uploadedByEmail, uploadedAtMillis
+//   }
+//
+// `data` is bare base64 so Android can use Base64.encodeToString(bytes,
+// NO_WRAP) and Base64.decode(s, DEFAULT) with no string surgery. On read the
+// web is deliberately lenient about all of this - see normalizeAttachment().
 //
 // The split is the whole point: the Handover list and the Activity feed
 // subscribe to their parent nodes, and if the base64 lived inline every
@@ -108,6 +123,20 @@ function loadImage(dataUrl) {
   });
 }
 
+/**
+ * Drop the "data:<mime>;base64," header a browser FileReader/canvas produces.
+ *
+ * We store BARE base64 on the wire. That is deliberate: it is exactly what
+ * Android's Base64.encodeToString(bytes, NO_WRAP) emits and what
+ * Base64.decode(s, DEFAULT) expects, so the Android client can read and write
+ * these nodes without any string surgery. The web pays the trivial cost of
+ * re-adding the header (or building a Blob) at display time instead.
+ */
+function stripDataUrl(dataUrl) {
+  const m = /^data:[^;,]*(;[^,]*)?,/.exec(dataUrl);
+  return m ? dataUrl.slice(m[0].length) : dataUrl;
+}
+
 /** Rough decoded size of a data URL's base64 payload, in bytes. */
 function dataUrlBytes(dataUrl) {
   const comma = dataUrl.indexOf(",");
@@ -134,12 +163,12 @@ export async function prepareAttachment(file) {
     if (file.size > MAX_PDF_BYTES) {
       throw new Error(`"${file.name}" is ${formatBytes(file.size)} — PDFs must be under 2 MB`);
     }
-    const data = await readAsDataUrl(file);
+    const dataUrl = await readAsDataUrl(file);
     return {
       name: file.name || "document.pdf",
       mime: "application/pdf",
-      data,
-      sizeBytes: dataUrlBytes(data)
+      data: stripDataUrl(dataUrl),
+      sizeBytes: dataUrlBytes(dataUrl)
     };
   }
 
@@ -171,7 +200,7 @@ export async function prepareAttachment(file) {
   return {
     name: baseName + ".jpg",
     mime: "image/jpeg",
-    data: out,
+    data: stripDataUrl(out),
     sizeBytes: dataUrlBytes(out)
   };
 }
@@ -191,32 +220,117 @@ export async function prepareAll(files) {
   return { ok, errors };
 }
 
+// ---------------- Cross-client compatibility ----------------
+//
+// The Android app writes these same nodes, and it does not necessarily use
+// our field names or our encoding. Android's
+// Base64.encodeToString(bytes, NO_WRAP) produces BARE base64, while a
+// browser's FileReader.readAsDataURL produces "data:image/jpeg;base64,...".
+// Reading is where we can be generous, so we are: every alias below is
+// checked, and both encodings are accepted.
+//
+// Writing has to pick one shape - see writeShape() at the bottom of this
+// file for the single place that decides it.
+
+const DATA_KEYS = ["data", "base64", "dataBase64", "base64Data", "content", "fileData", "bytes", "imageBase64", "docBase64"];
+const MIME_KEYS = ["mime", "mimeType", "contentType", "type"];
+const NAME_KEYS = ["name", "fileName", "filename", "displayName", "title"];
+const SIZE_KEYS = ["sizeBytes", "size", "fileSize", "length", "byteCount"];
+
+function firstString(rec, keys) {
+  for (const k of keys) {
+    const v = rec[k];
+    if (typeof v === "string" && v.length > 0) return v;
+  }
+  return "";
+}
+function firstNumber(rec, keys) {
+  for (const k of keys) {
+    const v = rec[k];
+    if (typeof v === "number" && v > 0) return v;
+    if (typeof v === "string" && /^\d+$/.test(v)) return parseInt(v, 10);
+  }
+  return 0;
+}
+
+/** Sniff the type from the base64 payload's magic bytes when no mime is stored. */
+function sniffMime(b64) {
+  if (b64.startsWith("/9j/")) return "image/jpeg";
+  if (b64.startsWith("iVBOR")) return "image/png";
+  if (b64.startsWith("JVBER")) return "application/pdf";
+  if (b64.startsWith("R0lGOD")) return "image/gif";
+  if (b64.startsWith("UklGR")) return "image/webp";
+  return "application/octet-stream";
+}
+
+/**
+ * Coerce whatever shape a client stored into one we can render.
+ * Returns { name, mime, sizeBytes, base64 } or null if there's no payload.
+ */
+export function normalizeAttachment(rec) {
+  if (!rec || typeof rec !== "object") return null;
+
+  let raw = firstString(rec, DATA_KEYS);
+  if (!raw) return null;
+
+  // Strip a data-URL header if there is one, and prefer the mime it declares
+  // over any separately-stored field - it describes the actual bytes.
+  let declaredMime = "";
+  const m = /^data:([^;,]*)(;[^,]*)?,/.exec(raw);
+  if (m) {
+    declaredMime = m[1] || "";
+    raw = raw.slice(m[0].length);
+  }
+
+  // Android's NO_WRAP is clean, but DEFAULT inserts newlines every 76 chars
+  // and some encoders emit URL-safe base64. atob() rejects both.
+  const base64 = raw.replace(/\s+/g, "").replace(/-/g, "+").replace(/_/g, "/");
+  if (!base64) return null;
+
+  const mime = declaredMime || firstString(rec, MIME_KEYS) || sniffMime(base64);
+  const name = firstString(rec, NAME_KEYS) ||
+    ("attachment" + (mime.includes("pdf") ? ".pdf" : mime.includes("png") ? ".png" : ".jpg"));
+
+  return {
+    name,
+    mime,
+    base64,
+    sizeBytes: firstNumber(rec, SIZE_KEYS) || Math.floor(base64.length * 3 / 4)
+  };
+}
+
+function base64ToBlob(base64, mime) {
+  // Restore padding some encoders omit, or atob() throws on the tail.
+  const padded = base64 + "=".repeat((4 - (base64.length % 4)) % 4);
+  const bin = atob(padded);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new Blob([bytes], { type: mime || "application/octet-stream" });
+}
+
 /** Open an attachment in the browser's own viewer (new tab). */
 export function openAttachment(att) {
-  if (!att || !att.data) {
-    window.showSnackbar?.("Attachment is empty");
+  const norm = normalizeAttachment(att);
+  if (!norm) {
+    window.showSnackbar?.("Attachment is empty or in a format this app can't read");
+    console.warn("unreadable attachment record", att && Object.keys(att));
     return;
   }
   try {
-    const comma = att.data.indexOf(",");
-    const b64 = att.data.slice(comma + 1);
-    const bin = atob(b64);
-    const bytes = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-    const blob = new Blob([bytes], { type: att.mime || "application/octet-stream" });
-    const url = URL.createObjectURL(blob);
+    const url = URL.createObjectURL(base64ToBlob(norm.base64, norm.mime));
     const win = window.open(url, "_blank");
     if (!win) {
-      // Popup blocked — fall back to a same-tab download so the user still
-      // gets the file rather than a silent no-op.
+      // Popup blocked - fall back to a download so the user still gets the
+      // file rather than a silent no-op.
       const a = document.createElement("a");
       a.href = url;
-      a.download = att.name || "attachment";
+      a.download = norm.name;
       a.click();
     }
     setTimeout(() => URL.revokeObjectURL(url), 60000);
   } catch (e) {
-    window.showSnackbar?.("Couldn't open attachment");
+    console.error("attachment decode failed", e);
+    window.showSnackbar?.("Couldn't open attachment: " + (e.message || "bad data"));
   }
 }
 
