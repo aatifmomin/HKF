@@ -1,4 +1,9 @@
 // Handover (donations) screen - admin only.
+//
+// Each application can carry supporting documents (the signed form, an ID
+// scan, a hospital bill). They're attached from the Edit dialog and listed on
+// the card itself with View / Remove. See attachments.js for why the blob and
+// the index live at separate database paths.
 
 import {
   getDatabase,
@@ -14,14 +19,24 @@ import {
 
 import { firebaseApp } from "./firebase-init.js";
 import { getSelectedYear, onYearChange } from "./year-state.js";
+import {
+  pickFiles,
+  prepareAll,
+  saveHandoverDoc,
+  removeHandoverDoc,
+  removeAllHandoverDocs,
+  viewHandoverDoc,
+  formatBytes,
+  ACCEPT_DOCS
+} from "./attachments.js";
 
 const db = getDatabase(firebaseApp);
 
 function formatRupees(minor) {
-  if (!minor || minor <= 0) return "\u20B90";
+  if (!minor || minor <= 0) return "₹0";
   const r = minor / 100;
-  if (minor % 100 === 0) return "\u20B9" + Math.trunc(r).toLocaleString("en-IN");
-  return "\u20B9" + r.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  if (minor % 100 === 0) return "₹" + Math.trunc(r).toLocaleString("en-IN");
+  return "₹" + r.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 function formatDate(millis) {
@@ -32,6 +47,10 @@ function formatDate(millis) {
 function escapeHtml(s) {
   if (!s) return "";
   return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+}
+
+function docIcon(mime) {
+  return (mime || "").includes("pdf") ? "PDF" : "IMG";
 }
 
 export function renderHandover(container) {
@@ -168,6 +187,24 @@ export function renderHandover(container) {
     rowsEl.querySelectorAll("[data-action='delete']").forEach(btn => {
       btn.addEventListener("click", () => deleteHandover(btn.dataset.key));
     });
+    rowsEl.querySelectorAll("[data-action='doc-view']").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        btn.disabled = true;
+        try { await viewHandoverDoc(btn.dataset.key, btn.dataset.doc); }
+        finally { btn.disabled = false; }
+      });
+    });
+    rowsEl.querySelectorAll("[data-action='doc-remove']").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        if (!confirm(`Remove "${btn.dataset.name}" from this application?`)) return;
+        try {
+          await removeHandoverDoc(btn.dataset.key, btn.dataset.doc);
+          window.showSnackbar?.("Document removed");
+        } catch (e) {
+          window.showSnackbar?.("Couldn't remove: " + (e.message || "error"));
+        }
+      });
+    });
   }
 
   const unsubYear = onYearChange(() => rerender());
@@ -176,6 +213,25 @@ export function renderHandover(container) {
     unsubHandovers();
     unsubYear();
   };
+}
+
+/** The document strip shown under a handover card. */
+function renderDocList(a) {
+  const docs = Object.entries(a.documents || {});
+  if (docs.length === 0) return "";
+  return `
+    <div class="doc-list">
+      ${docs.map(([docId, d]) => `
+        <div class="doc-chip">
+          <span class="doc-kind">${docIcon(d.mime)}</span>
+          <span class="doc-name" title="${escapeHtml(d.name)}">${escapeHtml(d.name)}</span>
+          <span class="doc-size">${escapeHtml(formatBytes(d.sizeBytes))}</span>
+          <button class="doc-btn" data-action="doc-view" data-key="${escapeHtml(a.key)}" data-doc="${escapeHtml(docId)}">View</button>
+          <button class="doc-btn danger" data-action="doc-remove" data-key="${escapeHtml(a.key)}" data-doc="${escapeHtml(docId)}" data-name="${escapeHtml(d.name)}">Remove</button>
+        </div>
+      `).join("")}
+    </div>
+  `;
 }
 
 function renderRow(a) {
@@ -221,6 +277,7 @@ function renderRow(a) {
           <button class="row-btn danger" data-action="delete" data-key="${escapeHtml(a.key)}">Del</button>
         </div>
       </div>
+      ${renderDocList(a)}
     </div>
   `;
 }
@@ -246,9 +303,10 @@ async function toggleStatus(key, user) {
 }
 
 async function deleteHandover(key) {
-  if (!confirm("Delete this handover? This cannot be undone.")) return;
+  if (!confirm("Delete this handover? Its attached documents go with it. This cannot be undone.")) return;
   try {
     await remove(ref(db, "handovers/" + key));
+    await removeAllHandoverDocs(key);
     window.showSnackbar?.("Deleted");
   } catch (e) {
     window.showSnackbar?.("Couldn't delete: " + (e.message || "error"));
@@ -267,6 +325,12 @@ async function allocateNextNumber() {
 
 function openHandoverDialog(existing, user) {
   const isEdit = !!existing;
+
+  // Files chosen in this dialog but not yet written. On an existing record we
+  // upload as soon as they're picked; on a new one we hold them until the
+  // record has a key to hang them off.
+  let staged = [];
+
   const dialog = document.createElement("div");
   dialog.className = "modal-overlay";
   dialog.innerHTML = `
@@ -296,13 +360,24 @@ function openHandoverDialog(existing, user) {
           </label>
         </div>
         <label class="field">
-          <span>Amount donated (\u20B9) *</span>
+          <span>Amount donated (₹) *</span>
           <input type="text" inputmode="decimal" id="f-amount" placeholder="0" />
         </label>
         <label class="field">
           <span>Purpose</span>
           <input type="text" id="f-purpose" />
         </label>
+
+        <div class="field">
+          <span>Documents</span>
+          <div class="attach-box">
+            <div class="attach-head">
+              <button class="attach-btn" type="button" id="f-attach">+ Attach</button>
+              <span class="attach-hint">JPG, PNG or PDF &middot; PDFs up to 2 MB</span>
+            </div>
+            <div id="f-doc-list" class="attach-list"></div>
+          </div>
+        </div>
       </div>
       <div class="modal-actions">
         <button class="modal-btn" id="f-cancel">Cancel</button>
@@ -345,6 +420,98 @@ function openHandoverDialog(existing, user) {
     }
   });
 
+  // ---- documents ----
+
+  // Local mirror of what's already saved, so removing inside the dialog gives
+  // instant feedback rather than waiting for the list listener to echo back.
+  let savedDocs = { ...(existing?.documents || {}) };
+
+  function renderDialogDocs() {
+    const listEl = f("f-doc-list");
+    const savedEntries = Object.entries(savedDocs);
+    if (savedEntries.length === 0 && staged.length === 0) {
+      listEl.innerHTML = `<div class="attach-empty">No documents attached.</div>`;
+      return;
+    }
+    listEl.innerHTML = [
+      ...savedEntries.map(([docId, d]) => `
+        <div class="attach-item">
+          <span class="doc-kind">${docIcon(d.mime)}</span>
+          <span class="doc-name">${escapeHtml(d.name)}</span>
+          <span class="doc-size">${escapeHtml(formatBytes(d.sizeBytes))}</span>
+          <button class="doc-btn" type="button" data-saved-view="${escapeHtml(docId)}">View</button>
+          <button class="doc-btn danger" type="button" data-saved-remove="${escapeHtml(docId)}">Remove</button>
+        </div>
+      `),
+      ...staged.map((att, i) => `
+        <div class="attach-item staged">
+          <span class="doc-kind">${docIcon(att.mime)}</span>
+          <span class="doc-name">${escapeHtml(att.name)}</span>
+          <span class="doc-size">${escapeHtml(formatBytes(att.sizeBytes))}</span>
+          <span class="pill pill-amber pill-tiny">on save</span>
+          <button class="doc-btn danger" type="button" data-staged-remove="${i}">Remove</button>
+        </div>
+      `)
+    ].join("");
+
+    listEl.querySelectorAll("[data-saved-view]").forEach(btn => {
+      btn.addEventListener("click", () => viewHandoverDoc(existing.key, btn.dataset.savedView));
+    });
+    listEl.querySelectorAll("[data-saved-remove]").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const docId = btn.dataset.savedRemove;
+        if (!confirm(`Remove "${savedDocs[docId]?.name || "this document"}"?`)) return;
+        btn.disabled = true;
+        try {
+          await removeHandoverDoc(existing.key, docId);
+          delete savedDocs[docId];
+          renderDialogDocs();
+        } catch (e) {
+          btn.disabled = false;
+          window.showSnackbar?.("Couldn't remove: " + (e.message || "error"));
+        }
+      });
+    });
+    listEl.querySelectorAll("[data-staged-remove]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        staged.splice(parseInt(btn.dataset.stagedRemove, 10), 1);
+        renderDialogDocs();
+      });
+    });
+  }
+  renderDialogDocs();
+
+  f("f-attach").addEventListener("click", async () => {
+    const btn = f("f-attach");
+    const files = await pickFiles({ multiple: true, accept: ACCEPT_DOCS });
+    if (!files.length) return;
+
+    btn.disabled = true;
+    btn.textContent = "Processing...";
+    try {
+      const { ok, errors } = await prepareAll(files);
+      errors.forEach(msg => window.showSnackbar?.(msg));
+
+      if (isEdit) {
+        // Existing record: write straight through, so a half-filled form that
+        // never gets saved doesn't lose the files the admin just picked.
+        for (const att of ok) {
+          const docId = await saveHandoverDoc(existing.key, att, user);
+          savedDocs[docId] = { name: att.name, mime: att.mime, sizeBytes: att.sizeBytes };
+        }
+        if (ok.length) window.showSnackbar?.(ok.length + (ok.length === 1 ? " document attached" : " documents attached"));
+      } else {
+        staged.push(...ok);
+      }
+      renderDialogDocs();
+    } catch (e) {
+      window.showSnackbar?.("Attach failed: " + (e.message || "error"));
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "+ Attach";
+    }
+  });
+
   function close() { document.body.removeChild(dialog); }
 
   f("f-cancel").addEventListener("click", close);
@@ -380,6 +547,10 @@ function openHandoverDialog(existing, user) {
       referenceMemberName: existing?.referenceMemberName || ""
     };
 
+    const submitBtn = f("f-submit");
+    submitBtn.disabled = true;
+    submitBtn.textContent = "Saving...";
+
     try {
       if (isEdit) {
         await update(ref(db, "handovers/" + existing.key), fields);
@@ -396,10 +567,15 @@ function openHandoverDialog(existing, user) {
           createdByEmail: user.email || "",
           createdAtMillis: serverTimestamp()
         });
+        for (const att of staged) {
+          await saveHandoverDoc(pushRef.key, att, user);
+        }
         window.showSnackbar?.("Created " + appNum);
       }
       close();
     } catch (e) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = isEdit ? "Save" : "Submit";
       window.showSnackbar?.("Couldn't save: " + (e.message || "error"));
     }
   });

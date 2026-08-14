@@ -53,7 +53,16 @@ let membersCache = [];
 let paymentsByMember = {};
 let handoversCache = [];
 
-export function renderHome(container, role) {
+// Last numbers rerender() computed, so the share card can be built from
+// exactly what's on screen rather than re-querying.
+let lastStats = { year: 0, activeMembers: 0, totalMembers: 0, collectionMinor: 0 };
+
+export function renderHome(container) {
+  // Annual report downloads are an admin tool: a member's own record lives on
+  // the Payments tab, and handing them a foundation-wide export of everyone
+  // else's contributions isn't theirs to have.
+  const isAdmin = window.__viewerIsAdmin === true;
+
   container.innerHTML = `
     <div class="home-header">
       <img class="logo-img" src="Logo.png" alt="HKF logo" />
@@ -114,7 +123,8 @@ export function renderHome(container, role) {
       </div>
     </div>
 
-    <div class="download-section" style="${role === 'admin' ? '' : 'display:none'}">
+    ${isAdmin ? `
+    <div class="download-section">
       <div class="download-label">DOWNLOAD ANNUAL REPORT</div>
       <div class="download-sub" id="download-sub">Selected year: ${getSelectedYear()}</div>
       <div class="download-row">
@@ -129,6 +139,18 @@ export function renderHome(container, role) {
       </div>
       <div class="download-hint">Includes all members, payments, and handovers for the selected year.</div>
     </div>
+    ` : ""}
+
+    <div class="share-section">
+      <div class="share-text">
+        <div class="share-label">SPREAD THE WORD</div>
+        <div class="share-sub">A card with this year's numbers and a link to the app.</div>
+      </div>
+      <button class="share-btn" id="share-refer">
+        <span class="share-icon">\u2197</span>
+        <span>Share &amp; refer</span>
+      </button>
+    </div>
   `;
 
   const greetingEl = container.querySelector("#home-greeting");
@@ -141,17 +163,43 @@ export function renderHome(container, role) {
   // in when actually needed.
   const pdfBtn = container.querySelector("#dl-pdf");
   const xlsxBtn = container.querySelector("#dl-xlsx");
-  pdfBtn.addEventListener("click", async () => {
-    await runDownload(pdfBtn, async () => {
-      const mod = await import("./year-report.js");
-      await mod.downloadYearReportPdf(getSelectedYear());
-    }, "PDF");
-  });
-  xlsxBtn.addEventListener("click", async () => {
-    await runDownload(xlsxBtn, async () => {
-      const mod = await import("./year-report.js");
-      await mod.downloadYearReportXlsx(getSelectedYear());
-    }, "Excel");
+  if (pdfBtn) {
+    pdfBtn.addEventListener("click", async () => {
+      await runDownload(pdfBtn, async () => {
+        const mod = await import("./year-report.js");
+        await mod.downloadYearReportPdf(getSelectedYear());
+      }, "PDF");
+    });
+  }
+  if (xlsxBtn) {
+    xlsxBtn.addEventListener("click", async () => {
+      await runDownload(xlsxBtn, async () => {
+        const mod = await import("./year-report.js");
+        await mod.downloadYearReportXlsx(getSelectedYear());
+      }, "Excel");
+    });
+  }
+
+  // Share card. Rendered from the numbers already on screen, so the button is
+  // instant after the canvas module loads.
+  const shareBtn = container.querySelector("#share-refer");
+  shareBtn.addEventListener("click", async () => {
+    const original = shareBtn.innerHTML;
+    shareBtn.disabled = true;
+    shareBtn.innerHTML = `<span class="share-icon">⋯</span><span>Building...</span>`;
+    try {
+      const mod = await import("./share-card.js");
+      const outcome = await mod.shareReferralCard({ ...lastStats, year: getSelectedYear() });
+      if (outcome === "downloaded") {
+        window.showSnackbar?.("Card saved to your downloads - attach it to a message");
+      }
+    } catch (e) {
+      console.error("share failed", e);
+      window.showSnackbar?.("Couldn't build the card: " + (e.message || "error"));
+    } finally {
+      shareBtn.disabled = false;
+      shareBtn.innerHTML = original;
+    }
   });
 
   unsubMembers = onValue(ref(db, "members"), snap => {
@@ -250,6 +298,13 @@ function rerender(container) {
 
   const totalCollectionMinor = collectionBars.reduce((s, b) => s + b.amountMinor, 0);
   const totalHandoverMinor = handoverBars.reduce((s, b) => s + b.amountMinor, 0);
+
+  lastStats = {
+    year,
+    activeMembers,
+    totalMembers,
+    collectionMinor: totalCollectionMinor
+  };
 
   container.querySelector("#stat-active").textContent = activeMembers;
   container.querySelector("#stat-active-sub").textContent = "of " + totalMembers + " total";

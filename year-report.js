@@ -24,6 +24,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js";
 
 import { firebaseApp } from "./firebase-init.js";
+import { loadJsPdf, loadXlsx } from "./lib-loader.js";
 
 const db = getDatabase(firebaseApp);
 
@@ -137,45 +138,8 @@ async function fetchYearData(year) {
   };
 }
 
-// Lazy CDN loaders ---------------------------------------------------------
-
-let jsPdfPromise = null;
-async function loadJsPdf() {
-  if (jsPdfPromise) return jsPdfPromise;
-  jsPdfPromise = (async () => {
-    // jsPDF + autotable as classic <script> tags. Easier than ESM imports
-    // because both libraries attach to window and autotable patches jsPDF.
-    await loadScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js");
-    await loadScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.0/jspdf.plugin.autotable.min.js");
-    if (!window.jspdf) throw new Error("jsPDF failed to load");
-    return window.jspdf.jsPDF;
-  })();
-  return jsPdfPromise;
-}
-
-let xlsxPromise = null;
-async function loadXlsx() {
-  if (xlsxPromise) return xlsxPromise;
-  xlsxPromise = (async () => {
-    await loadScript("https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js");
-    if (!window.XLSX) throw new Error("XLSX failed to load");
-    return window.XLSX;
-  })();
-  return xlsxPromise;
-}
-
-function loadScript(src) {
-  return new Promise((resolve, reject) => {
-    const existing = document.querySelector(`script[src="${src}"]`);
-    if (existing) { resolve(); return; }
-    const s = document.createElement("script");
-    s.src = src;
-    s.async = true;
-    s.onload = () => resolve();
-    s.onerror = () => reject(new Error("Failed to load " + src));
-    document.head.appendChild(s);
-  });
-}
+// The CDN loaders live in lib-loader.js so the Members export can reuse the
+// same SheetJS download instead of pulling it twice.
 
 // PDF report ---------------------------------------------------------------
 

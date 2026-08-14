@@ -2,40 +2,55 @@
 //
 // Flow:
 //   1. observeAuth -- if no user, show sign-in card
-//   2. After Google sign-in, if user could be admin (owner email or in
-//      /admins), show a role picker. If only a regular member, skip picker
-//      and go straight to the member shell.
-//   3. After role chosen, render the matching shell (admin or member).
+//   2. Resolve membership. A brand-new account is NOT a member yet: it goes
+//      into /joinRequests and sees the "Pending approval" screen until an
+//      admin decides. Approval arrives over a live listener, so they enter
+//      the app without signing out and back in.
+//   3. If the (now) member could be an admin (owner email or in /admins),
+//      show the role picker. Regular members skip straight to their shell.
 //   4. Bottom nav is animated between tab switches.
 
-import { signIn, signOut, observeAuth, observeAdminEmails, isAdminEmail, isOwner } from "./auth.js";
-import { ensureMemberExists } from "./members-self.js";
+import { signIn, signOut, observeAuth, observeAdminEmails, isAdminEmail, isOwner, displayNameFor } from "./auth.js";
+import {
+  resolveMembership,
+  observeMembership,
+  requestJoinAgain,
+  MEMBERSHIP_MEMBER,
+  MEMBERSHIP_PENDING,
+  MEMBERSHIP_DECLINED
+} from "./members-self.js";
 import { getSelectedYear, getSupportedYears, setSelectedYear } from "./year-state.js";
 import { renderHome } from "./home.js";
-import { renderDiscussion } from "./discussion.js";
+import { renderActivity } from "./activity.js";
 import { renderHandover } from "./handover.js";
 import { renderPayments } from "./payments.js";
 import { renderMembers } from "./members.js";
 import { renderAdmins } from "./admins.js";
 
-// Tab definitions per role. Mirrors Android nav order.
+// Tab definitions per role. Mirrors Android nav order. Members no longer have
+// a Discussion tab at all - the chat is gone, and the Activity feed that
+// replaced it is an admin tool.
 const ADMIN_TABS = [
-  { id: "home",       label: "Home"     },
-  { id: "admins",     label: "Admins"   },
-  { id: "members",    label: "Members"  },
-  { id: "handover",   label: "Handover" },
-  { id: "discussion", label: "Discuss"  }
+  { id: "home",     label: "Home"     },
+  { id: "activity", label: "Activity" },
+  { id: "members",  label: "Members"  },
+  { id: "handover", label: "Handover" },
+  { id: "admins",   label: "Admins"   }
 ];
 const MEMBER_TABS = [
-  { id: "home",       label: "Home"     },
-  { id: "payments",   label: "Payments" },
-  { id: "members",    label: "Members"  }
+  { id: "home",     label: "Home"     },
+  { id: "payments", label: "Payments" },
+  { id: "members",  label: "Members"  }
 ];
 
 let role = null;            // "admin" | "member" | null
 let currentTab = "home";
 let activeTeardown = null;
 let adminEmails = [];
+let currentUser = null;
+let membership = null;      // { status, request? }
+let unsubMembership = null;
+let currentScreen = null;   // "signin" | "loading" | "pending" | "declined" | "role" | "shell"
 
 const root = document.getElementById("app");
 boot();
@@ -45,31 +60,97 @@ function boot() {
   observeAdminEmails(emails => {
     adminEmails = emails;
     window.__adminEmails = emails;
+    // The admin list often lands after the first auth callback. Re-evaluate
+    // so someone who was just granted admin still gets the role picker.
+    applyState();
   });
 
   observeAuth(user => {
+    currentUser = user;
     window.__currentUser = user;
+
+    if (unsubMembership) { unsubMembership(); unsubMembership = null; }
+
     if (!user) {
       role = null;
+      membership = null;
       window.__viewerIsAdmin = false;
-      renderSignIn();
+      applyState();
       return;
     }
-    // Mirror Android: every sign-in upserts /members/{uid}. New users get a
-    // fresh M-XXX id; existing users get their displayName/email refreshed.
-    ensureMemberExists(user).catch(e => console.warn("ensureMemberExists", e));
 
-    const couldBeAdmin = isOwner(user.email) || isAdminEmail(user.email, adminEmails);
-    if (couldBeAdmin && role === null) {
-      renderRolePicker();
-    } else if (!couldBeAdmin) {
-      role = "member";
-      window.__viewerIsAdmin = false;
-      renderShell();
-    } else {
-      renderShell();
-    }
+    membership = null;
+    applyState();   // shows the "checking access" card while we look
+
+    // One-shot resolution creates the join request for first-time users; the
+    // live observer then keeps us in sync with the admin's decision.
+    resolveMembership(user)
+      .then(result => { membership = result; applyState(); })
+      .catch(e => {
+        console.error("membership check failed", e);
+        membership = { status: MEMBERSHIP_PENDING, error: e?.message || "" };
+        applyState();
+      });
+
+    unsubMembership = observeMembership(user, result => {
+      const prev = membership?.status;
+      membership = result;
+      // Entering the app for the first time should always land on Home.
+      if (prev && prev !== MEMBERSHIP_MEMBER && result.status === MEMBERSHIP_MEMBER) {
+        currentTab = "home";
+      }
+      applyState();
+    });
   });
+}
+
+/**
+ * Single place that decides which screen the user should be looking at.
+ * Re-renders only when the screen actually changes, so live database updates
+ * don't wipe out the tab the user is sitting on.
+ */
+function applyState() {
+  if (!currentUser) {
+    showScreen("signin", renderSignIn);
+    return;
+  }
+  if (!membership) {
+    showScreen("loading", renderCheckingAccess);
+    return;
+  }
+  if (membership.status === MEMBERSHIP_DECLINED) {
+    showScreen("declined", renderDeclined);
+    return;
+  }
+  if (membership.status !== MEMBERSHIP_MEMBER) {
+    showScreen("pending", renderPendingApproval);
+    return;
+  }
+
+  const couldBeAdmin = isOwner(currentUser.email) || isAdminEmail(currentUser.email, adminEmails);
+  if (couldBeAdmin && role === null) {
+    showScreen("role", renderRolePicker);
+    return;
+  }
+  if (!couldBeAdmin) {
+    role = "member";
+    window.__viewerIsAdmin = false;
+  }
+  showScreen("shell", renderShell);
+}
+
+function showScreen(name, renderFn) {
+  // The shell manages its own updates once mounted; re-rendering it on every
+  // database echo would throw the user back to whichever tab they started on.
+  if (currentScreen === name) return;
+  currentScreen = name;
+  renderFn();
+}
+
+/** Force the shell to (re)mount - used after the role picker. */
+function rerenderShell() {
+  currentScreen = "shell";
+  renderShell();
 }
 
 function renderSignIn() {
@@ -99,9 +180,100 @@ function renderSignIn() {
   });
 }
 
+function renderCheckingAccess() {
+  if (activeTeardown) { activeTeardown(); activeTeardown = null; }
+  root.innerHTML = `
+    <div class="shell">
+      <div class="signin-screen">
+        <div class="signin-card">
+          <img class="logo-img" src="Logo.png" alt="HKF logo" />
+          <div class="signin-title">Checking access</div>
+          <div class="loading" style="padding:18px 0;"><div class="spinner"></div>One moment...</div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+/**
+ * Gate screen for someone whose join request hasn't been decided yet. No tab
+ * is reachable from here. When an admin approves, observeMembership fires and
+ * applyState swaps this out for the member shell mid-session.
+ */
+function renderPendingApproval() {
+  if (activeTeardown) { activeTeardown(); activeTeardown = null; }
+  const user = currentUser;
+  root.innerHTML = `
+    <div class="shell">
+      <div class="signin-screen">
+        <div class="signin-card">
+          <img class="logo-img" src="Logo.png" alt="HKF logo" />
+          <div class="gate-badge gate-badge-pending">Awaiting approval</div>
+          <div class="signin-title">Pending approval to join</div>
+          <div class="signin-subtitle">
+            Your request has gone to the foundation admins. You'll get access
+            as soon as someone approves it - this page updates on its own, so
+            there's no need to sign in again.
+          </div>
+          <div class="gate-identity">
+            <div class="gate-identity-name">${escapeHtml(displayNameFor(user))}</div>
+            <div class="gate-identity-email">${escapeHtml(user?.email || "")}</div>
+          </div>
+          <div class="gate-pulse"><span></span><span></span><span></span></div>
+          <button class="link-btn" id="gate-signout">Sign out</button>
+        </div>
+      </div>
+    </div>
+  `;
+  document.getElementById("gate-signout").addEventListener("click", () => signOut());
+}
+
+/** Gate screen after an admin discards the request. */
+function renderDeclined() {
+  if (activeTeardown) { activeTeardown(); activeTeardown = null; }
+  const user = currentUser;
+  const decidedBy = membership?.request?.decidedByName || "";
+  root.innerHTML = `
+    <div class="shell">
+      <div class="signin-screen">
+        <div class="signin-card">
+          <img class="logo-img" src="Logo.png" alt="HKF logo" />
+          <div class="gate-badge gate-badge-declined">Not approved</div>
+          <div class="signin-title">Request declined</div>
+          <div class="signin-subtitle">
+            Your request to join wasn't approved${decidedBy ? " by " + escapeHtml(decidedBy) : ""}.
+            If you think that's a mistake, you can send it again.
+          </div>
+          <div class="gate-identity">
+            <div class="gate-identity-name">${escapeHtml(displayNameFor(user))}</div>
+            <div class="gate-identity-email">${escapeHtml(user?.email || "")}</div>
+          </div>
+          <button class="gold-button" id="gate-again">Request again</button>
+          <div style="height:14px;"></div>
+          <button class="link-btn" id="gate-signout">Sign out</button>
+        </div>
+      </div>
+    </div>
+  `;
+  document.getElementById("gate-again").addEventListener("click", async e => {
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    btn.textContent = "Sending...";
+    try {
+      await requestJoinAgain(currentUser);
+      window.showSnackbar?.("Request sent again");
+    } catch (err) {
+      btn.disabled = false;
+      btn.textContent = "Request again";
+      window.showSnackbar?.("Couldn't send: " + (err.message || "error"));
+    }
+  });
+  document.getElementById("gate-signout").addEventListener("click", () => signOut());
+}
+
 function renderRolePicker() {
   if (activeTeardown) { activeTeardown(); activeTeardown = null; }
-  const user = window.__currentUser;
+  const user = currentUser;
   root.innerHTML = `
     <div class="shell">
       <div class="signin-screen">
@@ -122,13 +294,13 @@ function renderRolePicker() {
     role = "admin";
     window.__viewerIsAdmin = true;
     currentTab = "home";
-    renderShell();
+    rerenderShell();
   });
   document.getElementById("role-member").addEventListener("click", () => {
     role = "member";
     window.__viewerIsAdmin = false;
     currentTab = "home";
-    renderShell();
+    rerenderShell();
   });
   document.getElementById("role-signout").addEventListener("click", async () => {
     await signOut();
@@ -138,6 +310,7 @@ function renderRolePicker() {
 function renderShell() {
   if (activeTeardown) { activeTeardown(); activeTeardown = null; }
   const tabs = role === "admin" ? ADMIN_TABS : MEMBER_TABS;
+  if (!tabs.some(t => t.id === currentTab)) currentTab = "home";
 
   root.innerHTML = `
     <div class="shell">
@@ -195,12 +368,12 @@ function renderTab(tab) {
   const anim = container.querySelector("#tab-anim");
 
   switch (tab) {
-    case "home":       activeTeardown = renderHome(anim, role); break;
-    case "admins":     activeTeardown = renderAdmins(anim); break;
-    case "members":    activeTeardown = renderMembers(anim); break;
-    case "handover":   activeTeardown = renderHandover(anim); break;
-    case "discussion": activeTeardown = renderDiscussion(anim); break;
-    case "payments":   activeTeardown = renderPayments(anim); break;
+    case "home":     activeTeardown = renderHome(anim); break;
+    case "admins":   activeTeardown = renderAdmins(anim); break;
+    case "members":  activeTeardown = renderMembers(anim); break;
+    case "handover": activeTeardown = renderHandover(anim); break;
+    case "activity": activeTeardown = renderActivity(anim); break;
+    case "payments": activeTeardown = renderPayments(anim); break;
     default:
       anim.innerHTML = `<div class="placeholder"><strong>Coming soon</strong>This tab is not built yet.</div>`;
   }

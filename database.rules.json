@@ -1,0 +1,174 @@
+// Hasnain Karimain Foundation - Realtime Database rules.
+//
+// Paste into Firebase Console > Realtime Database > Rules, then Publish.
+// (The console accepts these // comments; a strict JSON parser will not.)
+//
+// The owner email appears as a literal in several places below. It must stay
+// in sync with OWNER_EMAIL in firebase-config.js and with
+// AdminConstants.OWNER_EMAIL in the Android app.
+//
+// WHAT THESE RULES CAN AND CANNOT CHECK
+//
+// RTDB rules have no queries, so there is no way to ask "is this email in
+// /admins?" - /admins is keyed by push id, and rules cannot scan it. What we
+// CAN check cheaply is whether the writer has an approved member row:
+//
+//     root.child('members').child(auth.uid).exists()
+//
+// Every admin is a member, so that check is the useful security boundary
+// introduced by the join queue: an unapproved account can no longer write
+// anything except its own pending join request. Distinguishing admin from
+// ordinary member is still enforced in the UI only - same as before this
+// change, and the same as the Android app.
+//
+// The one exception below is /admins itself, where the owner is a literal and
+// therefore genuinely enforceable server-side.
+
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+
+    // ---------------------------------------------------------------
+    // Admin list - owner only. This one IS enforced server-side.
+    // ---------------------------------------------------------------
+    "admins": {
+      ".read": "auth != null",
+      ".write": "auth != null && auth.token.email.toLowerCase() == 'aatifmomin95@gmail.com'",
+      ".indexOn": ["emailLower"]
+    },
+
+    // ---------------------------------------------------------------
+    // Member directory.
+    //
+    // Readable by any signed-in account - an unapproved user needs this read
+    // to discover the row an admin pre-created for their email and claim it.
+    // If you would rather not expose the directory to unapproved accounts,
+    // change .read to the isMember expression; the claim path then degrades
+    // into the normal approval queue instead of failing.
+    // ---------------------------------------------------------------
+    "members": {
+      ".read": "auth != null",
+      ".indexOn": ["emailLower", "memberId"],
+
+      "$uid": {
+        // Approved members write: that covers admins creating and editing
+        // rows, and covers every step of the claim after its first write.
+        //
+        // The second clause is the ONLY way an unapproved account can create
+        // a member row, and it is deliberately narrow: the new row must be
+        // their own uid, must not already exist, and must name a
+        // claimedFromKey pointing at an existing pre-created row that carries
+        // their own email address. Only an admin can have created that row,
+        // so an unapproved account still cannot wave itself in - it can only
+        // take possession of a row that was already made for it.
+        ".write": "auth != null && (root.child('members').child(auth.uid).exists() || ($uid == auth.uid && !data.exists() && newData.child('claimedFromKey').exists() && root.child('members').child(newData.child('claimedFromKey').val()).child('emailLower').val() == auth.token.email.toLowerCase()))"
+      }
+    },
+
+    "membersCounter": {
+      ".read": "auth != null",
+      ".write": "auth != null"
+    },
+
+    // ---------------------------------------------------------------
+    // Join queue - the only node an unapproved account may write.
+    //
+    // A requester can create or re-open their OWN request, and the write must
+    // land with status 'pending'. Flipping a request to approved/declined
+    // requires an approved member row, so nobody can wave themselves in.
+    // ---------------------------------------------------------------
+    "joinRequests": {
+      ".read": "auth != null",
+
+      "$uid": {
+        ".write": "auth != null && (root.child('members').child(auth.uid).exists() || ($uid == auth.uid && (!newData.exists() || newData.child('status').val() == 'pending')))",
+        ".validate": "!newData.exists() || newData.hasChildren(['uid', 'status'])",
+
+        "status": {
+          ".validate": "newData.val() == 'pending' || newData.val() == 'approved' || newData.val() == 'declined'"
+        },
+        "uid": {
+          ".validate": "newData.val() == $uid"
+        }
+      }
+    },
+
+    // ---------------------------------------------------------------
+    // Recorded payments. Written by admins; members never self-credit.
+    // The extra clause covers the claim moving a pre-created row's payments
+    // onto the new uid.
+    // ---------------------------------------------------------------
+    "payments": {
+      ".read": "auth != null",
+
+      "$uid": {
+        ".write": "auth != null && root.child('members').child(auth.uid).exists()"
+      }
+    },
+
+    // ---------------------------------------------------------------
+    // Payment requests.
+    //
+    // A member creates their own request and may edit it while it is still
+    // pending (removing the proof they attached, say). Once decided, only an
+    // approved member can touch it - that is what makes the owner's
+    // "edit decision" flow meaningful rather than cosmetic.
+    // ---------------------------------------------------------------
+    "paymentRequests": {
+      ".read": "auth != null",
+      ".indexOn": ["memberUid", "status"],
+
+      "$requestKey": {
+        ".write": "auth != null && (root.child('members').child(auth.uid).exists() || (!data.exists() && newData.child('memberUid').val() == auth.uid && newData.child('status').val() == 'pending'))"
+      }
+    },
+
+    // ---------------------------------------------------------------
+    // Payment proof blobs, split out of /paymentRequests so the Activity feed
+    // and the member's history never download image data while listing.
+    // Fetched one key at a time; nothing lists this node.
+    // ---------------------------------------------------------------
+    "paymentProofs": {
+      ".read": "auth != null",
+
+      "$proofId": {
+        ".write": "auth != null && root.child('members').child(auth.uid).exists()",
+        ".validate": "!newData.exists() || newData.hasChildren(['mime', 'data'])"
+      }
+    },
+
+    // ---------------------------------------------------------------
+    // Handovers and their document blobs (same split, same reason).
+    // ---------------------------------------------------------------
+    "handovers": {
+      ".read": "auth != null",
+      ".write": "auth != null && root.child('members').child(auth.uid).exists()"
+    },
+
+    "handoversCounter": {
+      ".read": "auth != null",
+      ".write": "auth != null"
+    },
+
+    "handoverDocs": {
+      ".read": "auth != null",
+      ".write": "auth != null && root.child('members').child(auth.uid).exists()"
+    },
+
+    // ---------------------------------------------------------------
+    // Legacy chat nodes. The Discussion tab is gone in both clients, so these
+    // are closed off. Once you are happy with the new build you can delete
+    // /messages and /presence from the database entirely.
+    // ---------------------------------------------------------------
+    "messages": {
+      ".read": false,
+      ".write": false
+    },
+
+    "presence": {
+      ".read": false,
+      ".write": false
+    }
+  }
+}
