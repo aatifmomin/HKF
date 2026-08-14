@@ -53,7 +53,7 @@ let membersCache = [];
 let paymentsByMember = {};
 let handoversCache = [];
 
-export function renderHome(container) {
+export function renderHome(container, role) {
   container.innerHTML = `
     <div class="home-header">
       <img class="logo-img" src="Logo.png" alt="HKF logo" />
@@ -114,7 +114,7 @@ export function renderHome(container) {
       </div>
     </div>
 
-    <div class="download-section">
+    <div class="download-section" style="${role === 'admin' ? '' : 'display:none'}">
       <div class="download-label">DOWNLOAD ANNUAL REPORT</div>
       <div class="download-sub" id="download-sub">Selected year: ${getSelectedYear()}</div>
       <div class="download-row">

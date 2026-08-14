@@ -29,8 +29,7 @@ const ADMIN_TABS = [
 const MEMBER_TABS = [
   { id: "home",       label: "Home"     },
   { id: "payments",   label: "Payments" },
-  { id: "members",    label: "Members"  },
-  { id: "discussion", label: "Discuss"  }
+  { id: "members",    label: "Members"  }
 ];
 
 let role = null;            // "admin" | "member" | null
@@ -196,7 +195,7 @@ function renderTab(tab) {
   const anim = container.querySelector("#tab-anim");
 
   switch (tab) {
-    case "home":       activeTeardown = renderHome(anim); break;
+    case "home":       activeTeardown = renderHome(anim, role); break;
     case "admins":     activeTeardown = renderAdmins(anim); break;
     case "members":    activeTeardown = renderMembers(anim); break;
     case "handover":   activeTeardown = renderHandover(anim); break;

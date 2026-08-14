@@ -103,7 +103,13 @@ export function renderPayments(container) {
 
     const totalMinor = yearPayments.reduce((s, p) => s + (p.amountMinor || 0), 0);
     const paidMonths = new Set(yearPayments.map(p => p.coversMonthKey).filter(Boolean));
-    const monthCells = chartKeys.map(k => ({ key: k, paid: paidMonths.has(k) }));
+    const monthCells = chartKeys.map(k => ({
+      key: k,
+      paid: paidMonths.has(k),
+      amountMinor: yearPayments
+        .filter(p => p.coversMonthKey === k)
+        .reduce((sum, p) => sum + (p.amountMinor || 0), 0)
+    }));
     const paidCount = monthCells.filter(c => c.paid).length;
 
     // Status pill semantics with year filter:
@@ -140,11 +146,15 @@ export function renderPayments(container) {
     }
 
     const entries = [
-      ...yearPayments.map(p => ({ kind: "confirmed", sortKey: p.recordedAtMillis || 0, payment: p })),
+      ...yearPayments.map(p => ({ kind: "confirmed", sortKey: p.recordedAtMillis || 0, monthKey: p.coversMonthKey || "", payment: p })),
       ...yearRequests
         .filter(r => r.status === "pending" || r.status === "denied")
-        .map(r => ({ kind: "request", sortKey: r.createdAtMillis || 0, request: r }))
-    ].sort((a, b) => b.sortKey - a.sortKey);
+        .map(r => ({ kind: "request", sortKey: r.createdAtMillis || 0, monthKey: r.coversMonthKey || "", request: r }))
+        ].sort((a, b) =>
+      // Month order (Jan -> Dec) first, then record time within a month.
+      a.monthKey === b.monthKey ? a.sortKey - b.sortKey
+        : a.monthKey < b.monthKey ? -1 : 1
+    );
 
     contentEl.innerHTML = `
       <div class="my-payments-card">
@@ -154,6 +164,9 @@ export function renderPayments(container) {
           <span class="pill ${statusClass}">${escapeHtml(statusLabel)}</span>
         </div>
         <div class="mp-window">Jan ${year} - Dec ${year} - ${paidCount} of 12 paid</div>
+        <div style="display:flex;margin-bottom:2px;">
+          ${monthCells.map(c => `<div style="flex:1;text-align:center;font-size:8px;font-weight:600;color:var(--gold-dark);overflow:hidden;white-space:nowrap;">${c.amountMinor > 0 ? compactAmt(c.amountMinor) : ''}</div>`).join("")}
+        </div>
         <div class="mp-bar">
           ${monthCells.map(c => `<div class="mp-segment ${c.paid ? 'on' : ''}"></div>`).join("")}
         </div>
@@ -310,4 +323,12 @@ function openRequestDialog(user) {
       window.showSnackbar?.("Couldn't submit: " + (e.message || "error"));
     }
   });
+}
+
+// "500" / "1.5K" / "1.2L" - compact rupee labels above the 12-month bar.
+function compactAmt(minor) {
+  const r = minor / 100;
+  if (r >= 100000) return (r / 100000).toFixed(1).replace(".0", "") + "L";
+  if (r >= 1000) return (r / 1000).toFixed(1).replace(".0", "") + "K";
+  return String(Math.round(r));
 }
