@@ -3,12 +3,20 @@
 // Two very different screens share this module:
 //
 //   Admin  - the full directory: search, status filter chips, Excel export,
-//            "+ Add", and a 3-dot menu per row (record payment, edit, view
-//            payments, view profile, remove).
+//            "+ Add", and a 3-dot menu per row (record payment, view profile,
+//            edit, view payments, remove).
 //   Member - just their own card, expanded to show their profile. No search,
-//            no chips, no other people's rows. A member has no business
-//            browsing the roster, and the old list made the screen feel like
-//            an admin tool they weren't allowed to touch.
+//            no chips, no other people's rows.
+//
+// The member record shape is Android's MemberRecord, exactly:
+//   memberId, displayName, email, role, joinedAtMillis, totalPaidMinor,
+//   contactNumber, currentAddress, permanentAddress, occupation
+// There is no separate "full name" - displayName is the name. Adding one
+// would produce a field the Android client silently ignores.
+//
+// A member an admin adds before that person has ever signed in is stored
+// under a key prefixed "pending_", which is how BOTH clients recognise a row
+// waiting to be claimed at first sign-in.
 
 import {
   getDatabase,
@@ -23,7 +31,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js";
 
 import { firebaseApp } from "./firebase-init.js";
-import { peekNextMemberId } from "./members-self.js";
+import { peekNextMemberId, newPendingMemberKey, recalcMemberTotal } from "./members-self.js";
 import { getSelectedYear, onYearChange } from "./year-state.js";
 
 const db = getDatabase(firebaseApp);
@@ -70,10 +78,6 @@ export async function copyToClipboard(text, label) {
  *   - "Not started" if no payment covers a month in the year
  *   - "Full paid" if latest covered month >= today (capped at year-end)
  *   - "Up to {Mon} {year}" otherwise
- *
- * Year capping prevents the future-year edge case (today=May 2026 viewing
- * 2027): the reference month is min(today, dec-of-year), so a future year
- * with no payments correctly reports "Not started" rather than misleading.
  */
 function statusFor(payments, year) {
   if (!payments || payments.length === 0) return { label: "Not started", cls: "pill-grey" };
@@ -103,6 +107,11 @@ function nextNMonthKeys(start, n) {
     out.push((Math.floor(t / 12) + 1) + "-" + String((t % 12) + 1).padStart(2, "0"));
   }
   return out;
+}
+
+/** Display name for a member row, with sensible fallbacks. */
+export function memberDisplayName(m) {
+  return (m?.displayName || "").trim() || (m?.email || "-").split("@")[0];
 }
 
 export function renderMembers(container) {
@@ -160,7 +169,7 @@ function renderSelfView(container) {
         <div class="self-card-head">
           <div class="self-avatar">${escapeHtml(member.memberId || "?")}</div>
           <div class="self-head-text">
-            <div class="self-name">${escapeHtml(member.fullName || member.displayName || (member.email || "-").split("@")[0])}</div>
+            <div class="self-name">${escapeHtml(memberDisplayName(member))}</div>
             <div class="self-pills">
               <span class="pill pill-gold pill-tiny">${escapeHtml(member.role || "Member")}</span>
               <span class="pill ${status.cls} pill-tiny">${escapeHtml(status.label)}</span>
@@ -199,13 +208,13 @@ function renderSelfView(container) {
 
 /**
  * Profile block shared by the member self-view and the admin profile dialog.
- * Address rows are tap-to-copy - the permanent address in particular gets
- * pasted into forms constantly, and retyping it off a phone screen is how
- * typos get into paperwork.
+ * Addresses and the contact number are tap-to-copy - the permanent address in
+ * particular gets pasted into forms constantly, and retyping it off a phone
+ * screen is how typos get into paperwork.
  */
 function renderProfileFields(m) {
   const rows = [
-    { label: "Full name", value: m.fullName || m.displayName || "", copy: false },
+    { label: "Name", value: memberDisplayName(m), copy: false },
     { label: "Email", value: m.email || "", copy: true },
     { label: "Contact number", value: m.contactNumber || "", copy: true },
     { label: "Occupation", value: m.occupation || "", copy: false },
@@ -325,7 +334,7 @@ function renderAdminDirectory(container) {
     let filtered = members.filter(m => {
       if (!queryStr) return true;
       const blob = [
-        m.memberId, m.displayName, m.fullName, m.email, m.contactNumber, m.occupation
+        m.memberId, m.displayName, m.email, m.contactNumber, m.occupation
       ].filter(Boolean).join(" ").toLowerCase();
       return blob.includes(queryStr);
     });
@@ -375,18 +384,20 @@ function renderAdminDirectory(container) {
 
 function renderRow(m, status) {
   const role = m.role || "Member";
-  const name = m.fullName || m.displayName || (m.email || "-").split("@")[0];
+  // A pending_ row is someone an admin added who hasn't signed in yet.
+  const notSignedIn = String(m.uid || "").startsWith("pending_");
   const secondary = m.contactNumber || m.email || "";
   return `
     <div class="member-row">
       <div class="member-avatar">${escapeHtml(m.memberId || "?")}</div>
       <div class="member-body">
-        <div class="member-name">${escapeHtml(name)}</div>
+        <div class="member-name">${escapeHtml(memberDisplayName(m))}</div>
         <div class="member-meta">
           <span class="pill pill-gold pill-tiny">${escapeHtml(role)}</span>
           ${status && status.label
             ? `<span class="pill ${status.cls} pill-tiny">${escapeHtml(status.label)}</span>`
             : ""}
+          ${notSignedIn ? `<span class="pill pill-grey pill-tiny">Not signed in</span>` : ""}
         </div>
         <div class="member-email">${escapeHtml(secondary)}</div>
       </div>
@@ -421,7 +432,6 @@ function openMemberMenu(member, anchorBtn) {
   `;
   document.body.appendChild(menu);
 
-  // Position next to the anchor button
   const rect = anchorBtn.getBoundingClientRect();
   const menuRect = menu.getBoundingClientRect();
   let top = rect.bottom + 4;
@@ -462,7 +472,7 @@ function openProfileDialog(member) {
   dialog.className = "modal-overlay";
   dialog.innerHTML = `
     <div class="modal">
-      <div class="modal-title">${escapeHtml(member.memberId || "")} &middot; ${escapeHtml(member.fullName || member.displayName || "")}</div>
+      <div class="modal-title">${escapeHtml(member.memberId || "")} &middot; ${escapeHtml(memberDisplayName(member))}</div>
       <div class="modal-body">
         ${renderProfileFields(member)}
       </div>
@@ -482,22 +492,17 @@ function openProfileDialog(member) {
 
 function openRecordPaymentDialog(member) {
   const today = new Date();
-  const todayStr = today.getFullYear() + "-" + String(today.getMonth()+1).padStart(2,"0") + "-" + String(today.getDate()).padStart(2,"0");
   const nowMonthKey = today.getFullYear() + "-" + String(today.getMonth()+1).padStart(2,"0");
 
   const dialog = document.createElement("div");
   dialog.className = "modal-overlay";
   dialog.innerHTML = `
     <div class="modal">
-      <div class="modal-title">Record payment for ${escapeHtml(member.fullName || member.displayName || member.memberId)}</div>
+      <div class="modal-title">Record payment for ${escapeHtml(memberDisplayName(member))}</div>
       <div class="modal-body">
         <label class="field">
           <span>Covers month</span>
           <select id="rp-month"></select>
-        </label>
-        <label class="field">
-          <span>Date paid</span>
-          <input type="date" id="rp-date" />
         </label>
         <label class="field">
           <span>Amount (₹) *</span>
@@ -520,8 +525,6 @@ function openRecordPaymentDialog(member) {
   `;
   document.body.appendChild(dialog);
 
-  // Month dropdown spans the selected year so a payment can be backdated or
-  // logged ahead without leaving the dialog.
   const monthSelect = dialog.querySelector("#rp-month");
   const monthKeys = nextNMonthKeys(getSelectedYear() + "-01", 12);
   monthSelect.innerHTML = monthKeys.map(k => {
@@ -530,7 +533,6 @@ function openRecordPaymentDialog(member) {
     return `<option value="${k}" ${k === nowMonthKey ? "selected" : ""}>${label}</option>`;
   }).join("");
 
-  dialog.querySelector("#rp-date").value = todayStr;
   dialog.querySelector("#rp-amount").addEventListener("input", e => {
     if (!/^\d*\.?\d{0,2}$/.test(e.target.value)) e.target.value = e.target.value.slice(0, -1);
   });
@@ -544,29 +546,24 @@ function openRecordPaymentDialog(member) {
     const amountMinor = Math.round((parseFloat(amountText) || 0) * 100);
     if (amountMinor <= 0) { window.showSnackbar?.("Enter an amount > 0"); return; }
     const monthKey = dialog.querySelector("#rp-month").value;
-    const dateStr = dialog.querySelector("#rp-date").value || todayStr;
-    const dateMillis = new Date(dateStr + "T12:00:00").getTime();
     const category = dialog.querySelector("#rp-category").value.trim() || "Member contribution";
     const note = dialog.querySelector("#rp-note").value.trim();
     const user = window.__currentUser;
 
     try {
+      // PaymentRecord shape, exactly as Android writes it. No dateMillis -
+      // the Android data class has no such property.
       const paymentRef = push(ref(db, "payments/" + member.uid));
       await set(paymentRef, {
         coversMonthKey: monthKey,
         amountMinor,
         category,
         note,
+        batchKey: paymentRef.key,
         recordedByEmail: user?.email || "",
-        recordedAtMillis: serverTimestamp(),
-        dateMillis,
-        batchKey: paymentRef.key
+        recordedAtMillis: Date.now()
       });
-      // Bump member.totalPaidMinor
-      const memberRef = ref(db, "members/" + member.uid);
-      const snap = await get(memberRef);
-      const cur = snap.val()?.totalPaidMinor || 0;
-      await update(memberRef, { totalPaidMinor: cur + amountMinor });
+      await recalcMemberTotal(member.uid);
       window.showSnackbar?.("Payment recorded");
       close();
     } catch (e) {
@@ -577,20 +574,15 @@ function openRecordPaymentDialog(member) {
 
 // ---------------- Add / Edit member ----------------
 
-// Role values match Android MemberRole. Admin status is tracked separately
-// in /admins, so it's a checkbox here, not part of the role dropdown.
+// Matches Android's MemberRole enum, in the same order.
 const MEMBER_ROLES = ["Founder", "President", "VP", "Treasurer", "Technical Director", "Monitor", "Member"];
 
 /** The profile inputs shared by Add and Edit, so the two dialogs can't drift. */
 function profileFieldsMarkup(prefix) {
   return `
     <label class="field">
-      <span>Full name</span>
-      <input type="text" id="${prefix}-fullname" placeholder="As it should appear on records" />
-    </label>
-    <label class="field">
       <span>Contact number</span>
-      <input type="tel" id="${prefix}-contact" placeholder="e.g. 98765 43210" />
+      <input type="tel" id="${prefix}-contact" placeholder="e.g. 9876543210" />
     </label>
     <label class="field">
       <span>Occupation</span>
@@ -611,7 +603,6 @@ function profileFieldsMarkup(prefix) {
 function readProfileFields(dialog, prefix) {
   const v = id => (dialog.querySelector("#" + prefix + "-" + id)?.value || "").trim();
   return {
-    fullName: v("fullname"),
     contactNumber: v("contact"),
     occupation: v("occupation"),
     currentAddress: v("current"),
@@ -636,7 +627,7 @@ function openEditMemberDialog(member) {
       <div class="modal-title">Edit ${escapeHtml(member.memberId)}</div>
       <div class="modal-body">
         <label class="field">
-          <span>Display name</span>
+          <span>Name *</span>
           <input type="text" id="em-name" />
         </label>
         ${profileFieldsMarkup("em")}
@@ -669,7 +660,6 @@ function openEditMemberDialog(member) {
   wireSameAddress(dialog, "em");
 
   dialog.querySelector("#em-name").value = member.displayName || "";
-  dialog.querySelector("#em-fullname").value = member.fullName || "";
   dialog.querySelector("#em-contact").value = member.contactNumber || "";
   dialog.querySelector("#em-occupation").value = member.occupation || "";
   dialog.querySelector("#em-current").value = member.currentAddress || "";
@@ -677,12 +667,9 @@ function openEditMemberDialog(member) {
   dialog.querySelector("#em-email").value = member.email || "";
   dialog.querySelector("#em-id").value = member.memberId || "";
 
-  // Pick the role dropdown value, defaulting to Member if the stored value
-  // isn't in our enum (legacy data).
   const currentRole = MEMBER_ROLES.includes(member.role) ? member.role : "Member";
   dialog.querySelector("#em-role").value = currentRole;
 
-  // Determine if member is currently admin by checking /admins for their email
   let wasAdmin = false;
   (async () => {
     try {
@@ -715,7 +702,6 @@ function openEditMemberDialog(member) {
     }
 
     try {
-      // Uniqueness check on member ID if it changed
       if (newId !== member.memberId) {
         const allSnap = await get(ref(db, "members"));
         const collision = Object.entries(allSnap.val() || {}).some(
@@ -730,13 +716,12 @@ function openEditMemberDialog(member) {
       await update(ref(db, "members/" + member.uid), {
         displayName: name,
         email,
-        emailLower: email.toLowerCase(),
         memberId: newId,
         role,
         ...profile
       });
 
-      // Mirror admin toggle to /admins
+      // Mirror the admin toggle to /admins
       if (wantsAdmin && !wasAdmin && email) {
         const adminRef = push(ref(db, "admins"));
         await set(adminRef, {
@@ -777,7 +762,7 @@ async function openAddMemberDialog() {
           including any payments you record here first.
         </p>
         <label class="field">
-          <span>Display name *</span>
+          <span>Name *</span>
           <input type="text" id="am-name" />
         </label>
         ${profileFieldsMarkup("am")}
@@ -809,7 +794,6 @@ async function openAddMemberDialog() {
   document.body.appendChild(dialog);
   wireSameAddress(dialog, "am");
 
-  // Pre-fill suggested next ID
   try {
     const next = await peekNextMemberId();
     dialog.querySelector("#am-id").placeholder = next + " (auto)";
@@ -831,21 +815,17 @@ async function openAddMemberDialog() {
     if (email && !email.includes("@")) { window.showSnackbar?.("Invalid email"); return; }
 
     try {
-      let memberId = explicitId;
-      if (!memberId) {
-        memberId = await peekNextMemberId();
-      }
+      const memberId = explicitId || await peekNextMemberId();
 
-      const newRef = push(ref(db, "members"));
-      await set(newRef, {
+      // The "pending_" key prefix is how both clients recognise a row that is
+      // waiting for its owner to sign in and claim it.
+      await set(ref(db, "members/" + newPendingMemberKey()), {
         memberId,
         displayName: name,
         email: email.toLowerCase(),
-        emailLower: email.toLowerCase(),
         role,
         joinedAtMillis: Date.now(),
         totalPaidMinor: 0,
-        pending: true,
         ...profile
       });
 
@@ -875,7 +855,7 @@ async function openPaymentsDialog(member) {
   dialog.className = "modal-overlay";
   dialog.innerHTML = `
     <div class="modal">
-      <div class="modal-title">${escapeHtml(member.fullName || member.displayName || member.memberId)}'s payments</div>
+      <div class="modal-title">${escapeHtml(memberDisplayName(member))}'s payments</div>
       <div class="modal-body" id="vp-body">
         <div class="loading"><div class="spinner"></div>Loading...</div>
       </div>
@@ -930,7 +910,7 @@ async function openPaymentsDialog(member) {
 // ---------------- Remove member ----------------
 
 async function confirmRemoveMember(member) {
-  const ok = confirm("Remove " + (member.fullName || member.displayName || member.memberId) + "? Their /payments rows will also be deleted. This cannot be undone.");
+  const ok = confirm("Remove " + memberDisplayName(member) + "? Their /payments rows will also be deleted. This cannot be undone.");
   if (!ok) return;
   try {
     await fbRemove(ref(db, "members/" + member.uid));

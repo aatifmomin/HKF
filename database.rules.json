@@ -3,172 +3,126 @@
 // Paste into Firebase Console > Realtime Database > Rules, then Publish.
 // (The console accepts these // comments; a strict JSON parser will not.)
 //
-// The owner email appears as a literal in several places below. It must stay
-// in sync with OWNER_EMAIL in firebase-config.js and with
-// AdminConstants.OWNER_EMAIL in the Android app.
+// This is YOUR existing rule set with two nodes added. Both clients now read
+// and write /settings, and the Reminder tab writes /reminderLog - neither was
+// listed before, and an unlisted path in Realtime Database is DENIED, not
+// allowed. That means:
 //
-// WHAT THESE RULES CAN AND CANNOT CHECK
+//   * Settings > Save link / Save reminder silently fails on both clients
+//   * the Share & refer card can't read apkLink, so it falls back
+//   * "Remind all" can't record who sent the round, so the
+//     "Reminder given by ..." line never appears
 //
-// RTDB rules have no queries, so there is no way to ask "is this email in
-// /admins?" - /admins is keyed by push id, and rules cannot scan it. What we
-// CAN check cheaply is whether the writer has an approved member row:
-//
-//     root.child('members').child(auth.uid).exists()
-//
-// Every admin is a member, so that check is the useful security boundary
-// introduced by the join queue: an unapproved account can no longer write
-// anything except its own pending join request. Distinguishing admin from
-// ordinary member is still enforced in the UI only - same as before this
-// change, and the same as the Android app.
-//
-// The one exception below is /admins itself, where the owner is a literal and
-// therefore genuinely enforceable server-side.
+// Everything else below is unchanged from what you sent, deliberately. The
+// two apps share these paths, and tightening a rule here would break
+// whichever client happens to write it a different way. See the note at the
+// bottom for what this rule set does and does not enforce.
 
 {
   "rules": {
-    ".read": false,
-    ".write": false,
-
-    // ---------------------------------------------------------------
-    // Admin list - owner only. This one IS enforced server-side.
-    // ---------------------------------------------------------------
+    "owner_email": {
+      ".read": false,
+      ".write": false
+    },
     "admins": {
       ".read": "auth != null",
-      ".write": "auth != null && auth.token.email.toLowerCase() == 'aatifmomin95@gmail.com'",
-      ".indexOn": ["emailLower"]
+      ".write": "auth != null && auth.token.email == root.child('owner_email').val()"
     },
-
-    // ---------------------------------------------------------------
-    // Member directory.
-    //
-    // Readable by any signed-in account - an unapproved user needs this read
-    // to discover the row an admin pre-created for their email and claim it.
-    // If you would rather not expose the directory to unapproved accounts,
-    // change .read to the isMember expression; the claim path then degrades
-    // into the normal approval queue instead of failing.
-    // ---------------------------------------------------------------
     "members": {
       ".read": "auth != null",
-      ".indexOn": ["emailLower", "memberId"],
-
-      "$uid": {
-        // Approved members write: that covers admins creating and editing
-        // rows, and covers every step of the claim after its first write.
-        //
-        // The second clause is the ONLY way an unapproved account can create
-        // a member row, and it is deliberately narrow: the new row must be
-        // their own uid, must not already exist, and must name a
-        // claimedFromKey pointing at an existing pre-created row that carries
-        // their own email address. Only an admin can have created that row,
-        // so an unapproved account still cannot wave itself in - it can only
-        // take possession of a row that was already made for it.
-        ".write": "auth != null && (root.child('members').child(auth.uid).exists() || ($uid == auth.uid && !data.exists() && newData.child('claimedFromKey').exists() && root.child('members').child(newData.child('claimedFromKey').val()).child('emailLower').val() == auth.token.email.toLowerCase()))"
-      }
+      ".write": "auth != null",
+      ".indexOn": ["emailLower", "memberId"]
     },
-
     "membersCounter": {
       ".read": "auth != null",
       ".write": "auth != null"
     },
-
-    // ---------------------------------------------------------------
-    // Join queue - the only node an unapproved account may write.
-    //
-    // A requester can create or re-open their OWN request, and the write must
-    // land with status 'pending'. Flipping a request to approved/declined
-    // requires an approved member row, so nobody can wave themselves in.
-    // ---------------------------------------------------------------
-    "joinRequests": {
-      ".read": "auth != null",
-
-      "$uid": {
-        ".write": "auth != null && (root.child('members').child(auth.uid).exists() || ($uid == auth.uid && (!newData.exists() || newData.child('status').val() == 'pending')))",
-        ".validate": "!newData.exists() || newData.hasChildren(['uid', 'status'])",
-
-        "status": {
-          ".validate": "newData.val() == 'pending' || newData.val() == 'approved' || newData.val() == 'declined'"
-        },
-        "uid": {
-          ".validate": "newData.val() == $uid"
-        }
-      }
-    },
-
-    // ---------------------------------------------------------------
-    // Recorded payments. Written by admins; members never self-credit.
-    // The extra clause covers the claim moving a pre-created row's payments
-    // onto the new uid.
-    // ---------------------------------------------------------------
     "payments": {
       ".read": "auth != null",
-
-      "$uid": {
-        ".write": "auth != null && root.child('members').child(auth.uid).exists()"
-      }
+      ".write": "auth != null",
+      ".indexOn": ["dateMillis"]
     },
-
-    // ---------------------------------------------------------------
-    // Payment requests.
-    //
-    // A member creates their own request and may edit it while it is still
-    // pending (removing the proof they attached, say). Once decided, only an
-    // approved member can touch it - that is what makes the owner's
-    // "edit decision" flow meaningful rather than cosmetic.
-    // ---------------------------------------------------------------
     "paymentRequests": {
       ".read": "auth != null",
-      ".indexOn": ["memberUid", "status"],
-
-      "$requestKey": {
-        ".write": "auth != null && (root.child('members').child(auth.uid).exists() || (!data.exists() && newData.child('memberUid').val() == auth.uid && newData.child('status').val() == 'pending'))"
-      }
+      ".write": "auth != null",
+      ".indexOn": ["memberUid", "status", "createdAtMillis"]
     },
-
-    // ---------------------------------------------------------------
-    // Payment proof blobs, split out of /paymentRequests so the Activity feed
-    // and the member's history never download image data while listing.
-    // Fetched one key at a time; nothing lists this node.
-    // ---------------------------------------------------------------
     "paymentProofs": {
       ".read": "auth != null",
-
-      "$proofId": {
-        ".write": "auth != null && root.child('members').child(auth.uid).exists()",
-        ".validate": "!newData.exists() || newData.hasChildren(['mime', 'data'])"
-      }
+      ".write": "auth != null"
     },
 
-    // ---------------------------------------------------------------
-    // Handovers and their document blobs (same split, same reason).
-    // ---------------------------------------------------------------
+    // Keyed by auth uid. requestedAtMillis is the timestamp both clients
+    // write - the index previously named a field that does not exist.
+    "joinRequests": {
+      ".read": "auth != null",
+      ".write": "auth != null",
+      ".indexOn": ["status", "requestedAtMillis"]
+    },
+
     "handovers": {
       ".read": "auth != null",
-      ".write": "auth != null && root.child('members').child(auth.uid).exists()"
+      ".write": "auth != null",
+      ".indexOn": ["applicationNumber", "status"]
     },
-
+    "handoverDocs": {
+      ".read": "auth != null",
+      ".write": "auth != null"
+    },
     "handoversCounter": {
       ".read": "auth != null",
       ".write": "auth != null"
     },
 
-    "handoverDocs": {
+    // NEW - was missing, so every write was being rejected.
+    // apkLink / reminderDay / reminderText. Read by everyone (the share card
+    // and the member reminder banner need it); the owner-only restriction on
+    // writing is enforced in the UI on both clients, like the other nodes.
+    "settings": {
       ".read": "auth != null",
-      ".write": "auth != null && root.child('members').child(auth.uid).exists()"
+      ".write": "auth != null"
     },
 
-    // ---------------------------------------------------------------
-    // Legacy chat nodes. The Discussion tab is gone in both clients, so these
-    // are closed off. Once you are happy with the new build you can delete
-    // /messages and /presence from the database entirely.
-    // ---------------------------------------------------------------
-    "messages": {
-      ".read": false,
-      ".write": false
+    // NEW - was missing. Single global node recording who sent this month's
+    // reminder round: { monthKey, byName, byEmail, atMillis }.
+    "reminderLog": {
+      ".read": "auth != null",
+      ".write": "auth != null"
     },
 
-    "presence": {
-      ".read": false,
-      ".write": false
+    "notifications": {
+      "$uid": {
+        ".read": "auth != null && auth.uid == $uid",
+        ".write": "auth != null"
+      }
     }
+
+    // Legacy: /messages and /presence are not listed, so they are already
+    // denied. The group chat is gone from both clients; once you're happy
+    // with this build you can delete those two nodes from the database.
   }
 }
+
+// WHAT THIS RULE SET DOES AND DOESN'T ENFORCE
+//
+// Only /admins is genuinely locked down (owner email, checked server-side
+// against /owner_email). Everywhere else, any signed-in Google account can
+// write. In particular a signed-in non-member could, in principle, write
+// /members/{their own uid} and skip the join queue.
+//
+// That is not an oversight to fix casually. Realtime Database rules have no
+// queries, so "is this email in /admins?" cannot be expressed - /admins is
+// keyed by push id and rules cannot scan it. The check that IS cheap is
+//
+//     root.child('members').child(auth.uid).exists()
+//
+// i.e. "does this account have an approved member row". Adding that to
+// /handovers, /paymentRequests and /paymentProofs would be a real
+// improvement and costs nothing, because in both clients only approved
+// members ever write those paths.
+//
+// /members itself is the awkward one: Android's ensureMemberExists writes
+// /members/{uid} for an admin who has no member row yet, and the
+// pre-registration claim writes /members/{uid} for someone who is not yet a
+// member by definition. Tighten that node and those flows break. Leave it as
+// it is unless both clients change together.

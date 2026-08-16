@@ -49,8 +49,9 @@ function escapeHtml(s) {
   return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
 }
 
-function docIcon(mime) {
-  return (mime || "").includes("pdf") ? "PDF" : "IMG";
+/** Android stores `type` as a bare extension ("jpg" | "pdf"), not a mime. */
+function docIcon(type) {
+  return String(type || "").toLowerCase().includes("pdf") ? "PDF" : "IMG";
 }
 
 export function renderHandover(container) {
@@ -223,7 +224,7 @@ function renderDocList(a) {
     <div class="doc-list">
       ${docs.map(([docId, d]) => `
         <div class="doc-chip">
-          <span class="doc-kind">${docIcon(d.mime)}</span>
+          <span class="doc-kind">${docIcon(d.type)}</span>
           <span class="doc-name" title="${escapeHtml(d.name)}">${escapeHtml(d.name)}</span>
           <span class="doc-size">${escapeHtml(formatBytes(d.sizeBytes))}</span>
           <button class="doc-btn" data-action="doc-view" data-key="${escapeHtml(a.key)}" data-doc="${escapeHtml(docId)}">View</button>
@@ -313,14 +314,22 @@ async function deleteHandover(key) {
   }
 }
 
+/**
+ * Next application number.
+ *
+ * /handoversCounter is a BARE NUMBER, not { value: n } - Android reads it as
+ * `snapshot.value as? Long`. Writing an object here would make every Android
+ * client fail to allocate a number. The format is H%03d ("H001"), which is
+ * what the four existing rows in production use.
+ */
 async function allocateNextNumber() {
-  const counterRef = ref(db, "handoversCounter/value");
+  const counterRef = ref(db, "handoversCounter");
   let next = 1;
   await runTransaction(counterRef, current => {
-    next = (current || 0) + 1;
+    next = (typeof current === "number" ? current : 0) + 1;
     return next;
   });
-  return "H-" + String(next).padStart(4, "0");
+  return "H" + String(next).padStart(3, "0");
 }
 
 function openHandoverDialog(existing, user) {
@@ -436,7 +445,7 @@ function openHandoverDialog(existing, user) {
     listEl.innerHTML = [
       ...savedEntries.map(([docId, d]) => `
         <div class="attach-item">
-          <span class="doc-kind">${docIcon(d.mime)}</span>
+          <span class="doc-kind">${docIcon(d.type)}</span>
           <span class="doc-name">${escapeHtml(d.name)}</span>
           <span class="doc-size">${escapeHtml(formatBytes(d.sizeBytes))}</span>
           <button class="doc-btn" type="button" data-saved-view="${escapeHtml(docId)}">View</button>
@@ -445,7 +454,7 @@ function openHandoverDialog(existing, user) {
       `),
       ...staged.map((att, i) => `
         <div class="attach-item staged">
-          <span class="doc-kind">${docIcon(att.mime)}</span>
+          <span class="doc-kind">${docIcon(att.type)}</span>
           <span class="doc-name">${escapeHtml(att.name)}</span>
           <span class="doc-size">${escapeHtml(formatBytes(att.sizeBytes))}</span>
           <span class="pill pill-amber pill-tiny">on save</span>
@@ -497,7 +506,7 @@ function openHandoverDialog(existing, user) {
         // never gets saved doesn't lose the files the admin just picked.
         for (const att of ok) {
           const docId = await saveHandoverDoc(existing.key, att, user);
-          savedDocs[docId] = { name: att.name, mime: att.mime, sizeBytes: att.sizeBytes };
+          savedDocs[docId] = { name: att.name, type: att.type, sizeBytes: att.sizeBytes };
         }
         if (ok.length) window.showSnackbar?.(ok.length + (ok.length === 1 ? " document attached" : " documents attached"));
       } else {

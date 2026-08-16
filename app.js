@@ -25,17 +25,20 @@ import { renderActivity } from "./activity.js";
 import { renderHandover } from "./handover.js";
 import { renderPayments } from "./payments.js";
 import { renderMembers } from "./members.js";
-import { renderAdmins } from "./admins.js";
+import { renderReminder } from "./reminder.js";
+import { renderSettings } from "./settings.js";
 
 // Tab definitions per role. Mirrors Android nav order. Members no longer have
 // a Discussion tab at all - the chat is gone, and the Activity feed that
 // replaced it is an admin tool.
+// Order mirrors Android's AdminDestination. There is no Admins tab any more:
+// admin management moved inside Settings, behind the gear on Home.
 const ADMIN_TABS = [
   { id: "home",     label: "Home"     },
-  { id: "activity", label: "Activity" },
   { id: "members",  label: "Members"  },
   { id: "handover", label: "Handover" },
-  { id: "admins",   label: "Admins"   }
+  { id: "activity", label: "Activity" },
+  { id: "reminder", label: "Reminder" }
 ];
 const MEMBER_TABS = [
   { id: "home",     label: "Home"     },
@@ -320,7 +323,12 @@ function renderShell() {
           <span id="year-picker-label">${getSelectedYear()}</span>
           <span class="year-picker-caret">&#x25BE;</span>
         </button>
-        <button class="signout-pill" id="signout-btn">Sign out</button>
+        <div class="top-bar-right">
+          ${role === "admin" && isOwner(currentUser?.email)
+            ? `<button class="gear-pill" id="settings-btn" title="Settings" aria-label="Settings">&#x2699;</button>`
+            : ""}
+          <button class="signout-pill" id="signout-btn">Sign out</button>
+        </div>
       </div>
       <div class="content" id="content"></div>
       <div class="bottom-nav" id="bottom-nav">
@@ -339,6 +347,8 @@ function renderShell() {
     window.__viewerIsAdmin = false;
     currentTab = "home";
   });
+
+  document.getElementById("settings-btn")?.addEventListener("click", () => window.__openSettings());
 
   // Year picker: tap opens a small popover with the supported years
   document.getElementById("year-picker").addEventListener("click", e => {
@@ -359,6 +369,24 @@ function renderShell() {
   renderTab(currentTab);
 }
 
+/** Switch tabs programmatically, keeping the nav highlight in sync. */
+function goToTab(tab) {
+  currentTab = tab;
+  document.querySelectorAll(".nav-item").forEach(el => {
+    el.classList.toggle("active", el.dataset.tab === tab);
+  });
+  renderTab(tab);
+}
+
+// Home's gear calls this. Only wired for an owner viewing as admin, which is
+// the same gate Android uses.
+window.__openSettings = function () {
+  if (role !== "admin") return;
+  document.querySelectorAll(".nav-item").forEach(el => el.classList.remove("active"));
+  currentTab = "settings";
+  renderTab("settings");
+};
+
 function renderTab(tab) {
   const container = document.getElementById("content");
   if (!container) return;
@@ -369,11 +397,16 @@ function renderTab(tab) {
 
   switch (tab) {
     case "home":     activeTeardown = renderHome(anim); break;
-    case "admins":   activeTeardown = renderAdmins(anim); break;
     case "members":  activeTeardown = renderMembers(anim); break;
     case "handover": activeTeardown = renderHandover(anim); break;
     case "activity": activeTeardown = renderActivity(anim); break;
+    case "reminder": activeTeardown = renderReminder(anim); break;
     case "payments": activeTeardown = renderPayments(anim); break;
+    case "settings":
+      // Not a tab: Settings takes over the content area and offers a back
+      // link. The bottom nav stays visible so the user is never stranded.
+      activeTeardown = renderSettings(anim, { onBack: () => goToTab("home") });
+      break;
     default:
       anim.innerHTML = `<div class="placeholder"><strong>Coming soon</strong>This tab is not built yet.</div>`;
   }

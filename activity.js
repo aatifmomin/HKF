@@ -1,17 +1,23 @@
 // Activity feed - admin only. Replaces the old Discussion tab.
 //
-// The group chat and online-presence strip are gone. What admins actually
-// used that screen for was the payment-request cards buried between the
-// messages, so this screen is only those cards - plus the two other things
-// that need a decision:
+// A port of Android's ActivityScreen + ActivityViewModel. Three sources feed
+// one flat card list, each needing a decision:
 //
 //   * payment requests   -> Approve / Deny        (/paymentRequests)
 //   * handovers          -> Mark paid             (/handovers)
 //   * join requests      -> Approve / Discard     (/joinRequests)
 //
-// Anything still awaiting a decision is highlighted gold and sorted to the
-// top; anything already decided is greyed out and kept below as a log. The
-// owner can additionally reopen a decided payment request and flip it.
+// Pending is highlighted gold and sorted above everything; decided is greyed
+// and kept below as a log. Both blocks sort newest-first.
+//
+// The owner gets three extra powers, matching Android: edit a decided payment
+// request, move a paid handover back to pending, and delete a request or join
+// row outright.
+//
+// Write semantics are deliberately identical to PaymentRequestRepository:
+// status flips are claimed with a transaction so two admins tapping Approve
+// at the same moment can't both record the payment, and the member total is
+// RECOMPUTED rather than incremented.
 
 import {
   getDatabase,
@@ -21,13 +27,21 @@ import {
   set,
   push,
   update,
+  runTransaction,
   remove as fbRemove,
   serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js";
 
 import { firebaseApp } from "./firebase-init.js";
 import { isOwner, displayNameFor } from "./auth.js";
-import { approveJoinRequest, declineJoinRequest } from "./members-self.js";
+import {
+  approveJoinRequest,
+  declineJoinRequest,
+  deleteJoinRequest,
+  recalcMemberTotal,
+  JOIN_PENDING,
+  JOIN_APPROVED
+} from "./members-self.js";
 import { viewPaymentProof } from "./attachments.js";
 
 const db = getDatabase(firebaseApp);
@@ -54,6 +68,7 @@ function formatDate(millis) {
   return new Date(millis).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
 }
 
+/** Matches Android's relative-time helper. */
 function formatWhen(millis) {
   if (!millis || millis <= 0) return "";
   const diff = Date.now() - millis;
@@ -73,6 +88,15 @@ function escapeHtml(s) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
+}
+
+function nameBeforeAt(email) {
+  return String(email || "").split("@")[0];
+}
+
+/** Android compares request/handover status case-insensitively. */
+function statusOf(rec, fallback = "pending") {
+  return String(rec?.status || fallback).toLowerCase();
 }
 
 export function renderActivity(container) {
@@ -100,7 +124,7 @@ export function renderActivity(container) {
       </div>
     </div>
 
-    <input class="search-input" id="activity-search" placeholder="Search name, email, amount, app no..." />
+    <input class="search-input" id="activity-search" placeholder="Search by name" />
 
     <div class="filter-chips">
       <button class="chip active" data-filter="all">All</button>
@@ -119,7 +143,7 @@ export function renderActivity(container) {
   let joins = [];
   let queryStr = "";
   let filter = "all";
-  let busyKeys = new Set();
+  const busyKeys = new Set();
 
   const subtitleEl = container.querySelector("#activity-subtitle");
   const rowsEl = container.querySelector("#activity-rows");
@@ -150,7 +174,7 @@ export function renderActivity(container) {
   });
 
   const unsubJoins = onValue(ref(db, "joinRequests"), snap => {
-    joins = Object.entries(snap.val() || {}).map(([key, j]) => ({ key, ...j }));
+    joins = Object.entries(snap.val() || {}).map(([key, j]) => ({ uid: key, key, ...j }));
     rerender();
   });
 
@@ -160,60 +184,51 @@ export function renderActivity(container) {
 
     if (filter === "all" || filter === "requests") {
       requests.forEach(r => {
-        const pending = (r.status || "pending") === "pending";
         cards.push({
           type: "request",
           key: r.key,
-          pending,
+          pending: statusOf(r) === "pending",
           data: r,
-          sortMillis: pending ? (r.createdAtMillis || 0) : (r.decidedAtMillis || r.createdAtMillis || 0),
-          haystack: [
-            r.memberName, r.memberEmail, r.memberId, r.category,
-            monthLabel(r.coversMonthKey), formatRupees(r.amountMinor),
-            String((r.amountMinor || 0) / 100), "payment request", r.status
-          ].join(" ").toLowerCase()
+          sortMillis: r.createdAtMillis || 0,
+          // Android matches name / email / member id for requests.
+          haystack: [r.memberName, r.memberEmail, r.memberId].join(" ").toLowerCase()
         });
       });
     }
 
     if (filter === "all" || filter === "handovers") {
       handovers.forEach(h => {
-        const pending = (h.status || "pending") !== "paid";
+        const paid = statusOf(h) === "paid";
         cards.push({
           type: "handover",
           key: h.key,
-          pending,
+          pending: !paid,
           data: h,
-          sortMillis: pending
-            ? (h.createdAtMillis || h.applicationDateMillis || 0)
-            : (h.paidAtMillis || h.createdAtMillis || 0),
-          haystack: [
-            h.applicationNumber, h.personName, h.city, h.mobileNumber, h.purpose,
-            formatRupees(h.amountMinor), String((h.amountMinor || 0) / 100), "handover", h.status
-          ].join(" ").toLowerCase()
+          sortMillis: (paid && h.paidAtMillis > 0)
+            ? h.paidAtMillis
+            : (h.createdAtMillis > 0 ? h.createdAtMillis : (h.applicationDateMillis || 0)),
+          haystack: [h.personName, h.applicationNumber, h.city].join(" ").toLowerCase()
         });
       });
     }
 
     if (filter === "all" || filter === "joins") {
       joins.forEach(j => {
-        const pending = (j.status || "pending") === "pending";
         cards.push({
           type: "join",
-          key: j.key,
-          pending,
+          key: j.uid,
+          // Join status is compared exactly on Android, not case-folded.
+          pending: (j.status || JOIN_PENDING) === JOIN_PENDING,
           data: j,
-          sortMillis: pending ? (j.createdAtMillis || 0) : (j.decidedAtMillis || j.createdAtMillis || 0),
-          haystack: [j.displayName, j.email, "new member join request", j.status].join(" ").toLowerCase()
+          sortMillis: j.requestedAtMillis || 0,
+          haystack: [j.displayName, j.email].join(" ").toLowerCase()
         });
       });
     }
 
-    // Pending first (oldest pending at the top - it has waited longest),
-    // then the decided log newest-first.
+    // Pending block above the decided block; both newest-first.
     cards.sort((a, b) => {
       if (a.pending !== b.pending) return a.pending ? -1 : 1;
-      if (a.pending) return (a.sortMillis || 0) - (b.sortMillis || 0);
       return (b.sortMillis || 0) - (a.sortMillis || 0);
     });
 
@@ -224,13 +239,18 @@ export function renderActivity(container) {
     const cards = buildCards();
     const visible = queryStr ? cards.filter(c => c.haystack.includes(queryStr)) : cards;
     const pendingCount = cards.filter(c => c.pending).length;
+    const feedEmpty = requests.length === 0 && handovers.length === 0 && joins.length === 0;
 
-    subtitleEl.textContent = pendingCount === 0
-      ? "Nothing waiting on you"
-      : pendingCount + (pendingCount === 1 ? " item needs a decision" : " items need a decision");
+    subtitleEl.textContent = feedEmpty
+      ? "Payment requests and handovers appear here."
+      : pendingCount === 0
+        ? "All caught up — nothing pending."
+        : pendingCount + (pendingCount === 1 ? " pending item needs action" : " pending items need action");
 
     if (visible.length === 0) {
-      rowsEl.innerHTML = `<div class="empty-state">${queryStr ? "No matching activity." : "No activity yet."}</div>`;
+      rowsEl.innerHTML = `<div class="empty-state">${
+        queryStr || filter !== "all" ? "No matching activity." : "Nothing here yet."
+      }</div>`;
       return;
     }
 
@@ -251,19 +271,23 @@ export function renderActivity(container) {
 
     const request = requests.find(r => r.key === key);
     const handover = handovers.find(h => h.key === key);
-    const join = joins.find(j => j.key === key);
+    const join = joins.find(j => j.uid === key);
+
+    const start = () => { busyKeys.add(busyId); rerender(); };
 
     try {
       switch (act) {
-        case "req-approve":
+        case "req-approve": {
           if (!request) return;
-          busyKeys.add(busyId); rerender();
-          await approvePaymentRequest(request, user);
-          window.showSnackbar?.("Approved - payment recorded");
+          start();
+          const who = request.memberName || request.memberEmail || "member";
+          const ok = await approvePaymentRequest(request, user);
+          window.showSnackbar?.(ok ? `Approved ${who}'s request` : "Couldn't approve — try again");
           break;
+        }
         case "req-deny":
           if (!request) return;
-          busyKeys.add(busyId); rerender();
+          start();
           await denyPaymentRequest(request, user);
           window.showSnackbar?.("Request denied");
           break;
@@ -272,26 +296,48 @@ export function renderActivity(container) {
           openDecisionEditor(request, user);
           return;
         case "req-proof":
-          await viewPaymentProof(btn.dataset.proof);
+          btn.disabled = true;
+          try { await viewPaymentProof(key); } finally { btn.disabled = false; }
           return;
+        case "req-delete":
+          if (!request) return;
+          if (!confirmDelete("request")) return;
+          start();
+          await deleteRequestItem(request);
+          window.showSnackbar?.("Activity deleted");
+          break;
         case "ho-paid":
           if (!handover) return;
-          busyKeys.add(busyId); rerender();
+          start();
           await markHandoverPaid(handover, user);
-          window.showSnackbar?.("Marked paid");
+          window.showSnackbar?.(`Marked ${handover.personName || handover.applicationNumber} as paid`);
           break;
-        case "join-approve":
+        case "ho-pending":
+          if (!handover) return;
+          start();
+          await revertHandoverToPending(handover);
+          window.showSnackbar?.("Moved back to pending");
+          break;
+        case "join-approve": {
           if (!join) return;
-          busyKeys.add(busyId); rerender();
+          start();
+          const who = join.displayName || join.email;
           await approveJoinRequest(join, user);
-          window.showSnackbar?.("Approved - " + (join.displayName || join.email) + " can now use the app");
+          window.showSnackbar?.(`${who} is now a member`);
           break;
+        }
         case "join-deny":
           if (!join) return;
-          if (!confirm("Discard the join request from " + (join.displayName || join.email) + "?")) return;
-          busyKeys.add(busyId); rerender();
+          start();
           await declineJoinRequest(join, user);
-          window.showSnackbar?.("Request discarded");
+          window.showSnackbar?.("Join request discarded");
+          break;
+        case "join-delete":
+          if (!join) return;
+          if (!confirmDelete("join")) return;
+          start();
+          await deleteJoinRequest(join);
+          window.showSnackbar?.("Activity deleted");
           break;
         default:
           return;
@@ -313,6 +359,13 @@ export function renderActivity(container) {
   };
 }
 
+function confirmDelete(kind) {
+  const body = kind === "request"
+    ? "The request and its proof image will be permanently deleted. A payment recorded from an approval is NOT removed."
+    : "The join request will be permanently deleted.";
+  return confirm("Delete this activity?\n\n" + body + " This cannot be undone.");
+}
+
 // ---------------- Card rendering ----------------
 
 function renderCard(card, viewerIsOwner, busyKeys) {
@@ -320,16 +373,19 @@ function renderCard(card, viewerIsOwner, busyKeys) {
   const busy = act => busyKeys.has(act + ":" + card.key);
 
   if (card.type === "request") return renderRequestCard(card, stateClass, viewerIsOwner, busy);
-  if (card.type === "handover") return renderHandoverCard(card, stateClass, busy);
-  return renderJoinCard(card, stateClass, busy);
+  if (card.type === "handover") return renderHandoverCard(card, stateClass, viewerIsOwner, busy);
+  return renderJoinCard(card, stateClass, viewerIsOwner, busy);
 }
 
-function cardShell({ stateClass, eyebrow, accent, title, amount, metaLines, badge, actions }) {
+function cardShell({ stateClass, eyebrow, accent, when, deleteBtn, title, amount, metaLines, actions }) {
   return `
     <div class="${stateClass}">
       <div class="activity-card-top">
         <span class="activity-eyebrow ${accent}">${escapeHtml(eyebrow)}</span>
-        ${badge || ""}
+        <span class="activity-top-right">
+          ${when ? `<span class="activity-when">${escapeHtml(when)}</span>` : ""}
+          ${deleteBtn || ""}
+        </span>
       </div>
       <div class="activity-card-main">
         <div class="activity-card-text">
@@ -343,96 +399,102 @@ function cardShell({ stateClass, eyebrow, accent, title, amount, metaLines, badg
   `;
 }
 
+function ownerDelete(act, key) {
+  return `<button class="activity-delete" data-act="${act}" data-key="${escapeHtml(key)}" title="Delete" aria-label="Delete">&#x2715;</button>`;
+}
+
+function decidedBy(rec) {
+  const by = rec.decidedByName || nameBeforeAt(rec.decidedByEmail);
+  return by ? `<span class="activity-decided-by">by ${escapeHtml(by)}</span>` : "";
+}
+
 function renderRequestCard(card, stateClass, viewerIsOwner, busy) {
   const r = card.data;
-  const who = r.memberName || (r.memberEmail || "").split("@")[0] || "Member";
-  const proofBtn = r.proofId
-    ? `<button class="activity-btn ghost" data-act="req-proof" data-key="${escapeHtml(card.key)}" data-proof="${escapeHtml(r.proofId)}">View</button>`
+  const who = r.memberName || nameBeforeAt(r.memberEmail) || "Member";
+  const status = statusOf(r);
+
+  // The proof lives at /paymentProofs/{requestKey}; proofName is the flag.
+  const proofLine = r.proofName
+    ? `<span class="proof-tag">PROOF</span>
+       <span class="proof-name">${escapeHtml(r.proofName)}</span>
+       <button class="doc-btn" data-act="req-proof" data-key="${escapeHtml(card.key)}">View</button>`
     : "";
 
-  let badge = "";
   let actions = "";
-
   if (card.pending) {
-    badge = `<span class="pill pill-amber pill-tiny">Needs decision</span>`;
     actions = `
       <button class="activity-btn primary" data-act="req-approve" data-key="${escapeHtml(card.key)}" ${busy("req-approve") ? "disabled" : ""}>
         ${busy("req-approve") ? "Working..." : "Approve"}
       </button>
       <button class="activity-btn danger" data-act="req-deny" data-key="${escapeHtml(card.key)}" ${busy("req-deny") ? "disabled" : ""}>
         ${busy("req-deny") ? "Working..." : "Deny"}
-      </button>
-      ${proofBtn}
-    `;
+      </button>`;
   } else {
-    const approved = r.status === "approved";
-    const by = r.decidedByName || (r.decidedByEmail || "").split("@")[0];
-    badge = `<span class="pill ${approved ? "pill-green" : "pill-red"} pill-tiny">${approved ? "Approved" : "Denied"}</span>`;
+    const approved = status === "approved";
     actions = `
-      ${viewerIsOwner ? `<button class="activity-btn" data-act="req-edit" data-key="${escapeHtml(card.key)}">Edit decision</button>` : ""}
-      ${proofBtn}
-      ${by ? `<span class="activity-decided-by">by ${escapeHtml(by)} ${escapeHtml(formatWhen(r.decidedAtMillis))}</span>` : ""}
-    `;
+      <span class="pill ${approved ? "pill-green" : "pill-red"} pill-tiny">${approved ? "Approved" : "Denied"}</span>
+      ${decidedBy(r)}
+      ${viewerIsOwner ? `<button class="activity-btn" data-act="req-edit" data-key="${escapeHtml(card.key)}">Edit</button>` : ""}`;
   }
+
+  const detail = [formatRupees(r.amountMinor), monthLabel(r.coversMonthKey)];
+  if (r.category) detail.push(r.category);
 
   return cardShell({
     stateClass,
     eyebrow: "Payment request",
     accent: "accent-gold",
+    when: formatWhen(r.createdAtMillis),
+    deleteBtn: viewerIsOwner ? ownerDelete("req-delete", card.key) : "",
     title: escapeHtml(who),
-    amount: formatRupees(r.amountMinor),
-    badge,
+    amount: "",
     actions,
     metaLines: [
-      escapeHtml(monthLabel(r.coversMonthKey)) + " &middot; " + escapeHtml(r.category || "Member contribution"),
+      escapeHtml(detail.join(" · ")),
       escapeHtml(r.memberEmail || ""),
-      (r.proofId ? `<span class="proof-tag">PROOF</span> ` : "") + escapeHtml("Requested " + formatWhen(r.createdAtMillis))
+      proofLine
     ]
   });
 }
 
-function renderHandoverCard(card, stateClass, busy) {
+function renderHandoverCard(card, stateClass, viewerIsOwner, busy) {
   const h = card.data;
-  const badge = card.pending
-    ? `<span class="pill pill-amber pill-tiny">Pending payout</span>`
-    : `<span class="pill pill-green pill-tiny">Paid</span>`;
+  const detail = [formatRupees(h.amountMinor)];
+  if (h.applicationNumber) detail.push("#" + h.applicationNumber);
+  if (h.city) detail.push(h.city);
+
+  const docCount = h.documents ? Object.keys(h.documents).length : 0;
 
   const actions = card.pending
     ? `<button class="activity-btn primary" data-act="ho-paid" data-key="${escapeHtml(card.key)}" ${busy("ho-paid") ? "disabled" : ""}>
          ${busy("ho-paid") ? "Working..." : "Mark paid"}
        </button>`
-    : `<span class="activity-decided-by">
-         paid ${escapeHtml(formatWhen(h.paidAtMillis))}${h.paidByEmail ? " by " + escapeHtml(h.paidByEmail.split("@")[0]) : ""}
-       </span>`;
-
-  const docCount = h.documents ? Object.keys(h.documents).length : 0;
+    : `<span class="pill pill-green pill-tiny">Paid</span>
+       ${h.paidByEmail ? `<span class="activity-decided-by">by ${escapeHtml(nameBeforeAt(h.paidByEmail))}</span>` : ""}
+       ${viewerIsOwner ? `<button class="activity-btn" data-act="ho-pending" data-key="${escapeHtml(card.key)}" ${busy("ho-pending") ? "disabled" : ""}>
+         ${busy("ho-pending") ? "Working..." : "Move to pending"}
+       </button>` : ""}`;
 
   return cardShell({
     stateClass,
     eyebrow: "Handover",
     accent: "accent-blue",
-    title: `${escapeHtml(h.applicationNumber || "-")} &middot; ${escapeHtml(h.personName || "-")}`,
-    amount: formatRupees(h.amountMinor),
-    badge,
+    when: formatWhen(card.sortMillis),
+    deleteBtn: "",
+    title: escapeHtml(h.personName || ("Application " + (h.applicationNumber || "-"))),
+    amount: "",
     actions,
     metaLines: [
-      escapeHtml([h.city, h.mobileNumber].filter(Boolean).join(" · ")),
+      escapeHtml(detail.join(" · ")),
       escapeHtml(h.purpose || ""),
-      escapeHtml("Applied " + formatDate(h.applicationDateMillis)) +
-        (docCount ? ` &middot; <span class="proof-tag">${docCount} DOC${docCount > 1 ? "S" : ""}</span>` : "")
+      docCount ? `<span class="proof-tag">${docCount} DOC${docCount > 1 ? "S" : ""}</span>` : ""
     ]
   });
 }
 
-function renderJoinCard(card, stateClass, busy) {
+function renderJoinCard(card, stateClass, viewerIsOwner, busy) {
   const j = card.data;
-  const decided = !card.pending;
-  const approved = j.status === "approved";
-  const by = j.decidedByName || (j.decidedByEmail || "").split("@")[0];
-
-  const badge = card.pending
-    ? `<span class="pill pill-amber pill-tiny">Needs decision</span>`
-    : `<span class="pill ${approved ? "pill-green" : "pill-red"} pill-tiny">${approved ? "Approved" : "Discarded"}</span>`;
+  const approved = j.status === JOIN_APPROVED;
 
   const actions = card.pending
     ? `<button class="activity-btn primary" data-act="join-approve" data-key="${escapeHtml(card.key)}" ${busy("join-approve") ? "disabled" : ""}>
@@ -441,19 +503,21 @@ function renderJoinCard(card, stateClass, busy) {
        <button class="activity-btn danger" data-act="join-deny" data-key="${escapeHtml(card.key)}" ${busy("join-deny") ? "disabled" : ""}>
          ${busy("join-deny") ? "Working..." : "Discard"}
        </button>`
-    : (by ? `<span class="activity-decided-by">by ${escapeHtml(by)} ${escapeHtml(formatWhen(j.decidedAtMillis))}</span>` : "");
+    : `<span class="pill ${approved ? "pill-green" : "pill-red"} pill-tiny">${approved ? "Approved" : "Discarded"}</span>
+       ${decidedBy(j)}`;
 
   return cardShell({
     stateClass,
-    eyebrow: decided ? "Join request" : "New member",
+    eyebrow: "New member",
     accent: "accent-green",
-    title: escapeHtml(j.displayName || (j.email || "").split("@")[0] || "Someone"),
+    when: formatWhen(j.requestedAtMillis),
+    deleteBtn: viewerIsOwner ? ownerDelete("join-delete", card.key) : "",
+    title: escapeHtml(j.displayName || nameBeforeAt(j.email) || "Someone"),
     amount: "",
-    badge,
     actions,
     metaLines: [
       escapeHtml(j.email || ""),
-      escapeHtml("Asked to join " + formatWhen(j.createdAtMillis))
+      "Wants to join the foundation"
     ]
   });
 }
@@ -461,41 +525,75 @@ function renderJoinCard(card, stateClass, busy) {
 // ---------------- Decisions ----------------
 
 /**
- * Record the payment behind an approved request and stamp the request.
- * The created payment key is written back onto the request so the owner's
- * decision editor can find (and undo) exactly this payment later.
+ * Atomically claim a status transition. Returns false if another admin got
+ * there first, in which case the caller backs off silently rather than
+ * recording a second payment for the same request.
  */
-async function approvePaymentRequest(req, actor) {
-  const paymentRef = push(ref(db, "payments/" + req.memberUid));
-  await set(paymentRef, {
-    coversMonthKey: req.coversMonthKey,
-    amountMinor: req.amountMinor || 0,
-    category: req.category || "Member contribution",
-    note: "Approved request",
-    recordedByEmail: actor?.email || "",
-    recordedAtMillis: serverTimestamp(),
-    dateMillis: req.requestedDateMillis || Date.now(),
-    batchKey: paymentRef.key,
-    fromRequestKey: req.key,
-    // The proof blob is shared, not copied: the confirmed payment row simply
-    // points at the same /paymentProofs entry the member uploaded.
-    proofId: req.proofId || "",
-    proofName: req.proofName || "",
-    proofMime: req.proofMime || ""
+async function claimStatus(requestKey, expect, to) {
+  const result = await runTransaction(ref(db, "paymentRequests/" + requestKey + "/status"), current => {
+    if (current !== expect) return undefined;   // abort
+    return to;
   });
+  return result.committed;
+}
 
-  await bumpMemberTotal(req.memberUid, req.amountMinor || 0);
+/**
+ * Record the payment behind an approved request and stamp the request.
+ * `force` lets the owner re-decide a DENIED request; an approved one is never
+ * re-approvable, because its payment row already exists.
+ */
+async function approvePaymentRequest(req, actor, force = false) {
+  const status = statusOf(req);
+  const decidable = status === "pending" || (force && status === "denied");
+  if (!decidable) return true;
+
+  if (!await claimStatus(req.key, req.status, "approved")) return true;
 
   await update(ref(db, "paymentRequests/" + req.key), {
     status: "approved",
     decidedByEmail: actor?.email || "",
     decidedByName: displayNameFor(actor),
-    decidedAtMillis: serverTimestamp(),
-    paymentKey: paymentRef.key
+    decidedAtMillis: serverTimestamp()
   });
+
+  let paymentKey = null;
+  try {
+    const paymentRef = push(ref(db, "payments/" + req.memberUid));
+    await set(paymentRef, {
+      coversMonthKey: req.coversMonthKey,
+      amountMinor: req.amountMinor || 0,
+      category: req.category || "Member contribution",
+      note: "Approved request",
+      batchKey: paymentRef.key,
+      recordedByEmail: actor?.email || "",
+      recordedAtMillis: Date.now()
+    });
+    await recalcMemberTotal(req.memberUid);
+    paymentKey = paymentRef.key;
+  } catch (e) {
+    console.error("payment write failed", e);
+  }
+
+  if (paymentKey) {
+    // Stored so a later revert deletes exactly this row rather than guessing.
+    await update(ref(db, "paymentRequests/" + req.key), { approvedPaymentKey: paymentKey })
+      .catch(() => { /* best effort - revert falls back to matching */ });
+    return true;
+  }
+
+  // Payment failed: put the request back so an admin can retry.
+  await update(ref(db, "paymentRequests/" + req.key), {
+    status: "pending",
+    decidedByEmail: "",
+    decidedByName: "",
+    decidedAtMillis: 0
+  }).catch(() => {});
+  return false;
 }
 
 async function denyPaymentRequest(req, actor) {
+  if (statusOf(req) !== "pending") return;
+  if (!await claimStatus(req.key, req.status, "denied")) return;
   await update(ref(db, "paymentRequests/" + req.key), {
     status: "denied",
     decidedByEmail: actor?.email || "",
@@ -505,77 +603,93 @@ async function denyPaymentRequest(req, actor) {
 }
 
 /**
- * Undo an approval: delete the payment row this request created and subtract
- * it from the member's running total.
+ * Owner-only: undo an approval. Deletes the payment row the approval created
+ * and recomputes the member's total.
+ *
+ * Row location: approvedPaymentKey when present, otherwise match on
+ * note=="Approved request" + month + amount, preferring the row recorded by
+ * the original decider. If nothing matches we still flip the status - the
+ * money is already un-recorded, which is the end state we want.
  */
-async function revokePaymentForRequest(req) {
+async function revertApprovedRequest(req, actor) {
   const uid = req.memberUid;
-  if (!uid) return 0;
+  let removedMinor = 0;
 
-  let paymentKey = req.paymentKey || "";
-  let amount = 0;
+  if (uid) {
+    let paymentKey = req.approvedPaymentKey || "";
+    if (paymentKey) {
+      const snap = await get(ref(db, "payments/" + uid + "/" + paymentKey));
+      if (snap.exists()) removedMinor = snap.val()?.amountMinor || 0;
+      else paymentKey = "";
+    }
 
-  if (paymentKey) {
-    const snap = await get(ref(db, "payments/" + uid + "/" + paymentKey));
-    if (snap.exists()) amount = snap.val()?.amountMinor || 0;
-    else paymentKey = "";
-  }
+    if (!paymentKey) {
+      const allSnap = await get(ref(db, "payments/" + uid));
+      const candidates = Object.entries(allSnap.val() || {}).filter(([, p]) =>
+        (p.note || "") === "Approved request" &&
+        (p.coversMonthKey || "") === (req.coversMonthKey || "") &&
+        (p.amountMinor || 0) === (req.amountMinor || 0)
+      );
+      const preferred = candidates.find(([, p]) => (p.recordedByEmail || "") === (req.decidedByEmail || ""));
+      const chosen = preferred || candidates[0];
+      if (chosen) {
+        paymentKey = chosen[0];
+        removedMinor = chosen[1]?.amountMinor || 0;
+      }
+    }
 
-  if (!paymentKey) {
-    // Legacy rows approved before we started stamping paymentKey. Find the
-    // payment by what the old approve path wrote: same month, same amount,
-    // note "Approved request".
-    const allSnap = await get(ref(db, "payments/" + uid));
-    const match = Object.entries(allSnap.val() || {}).find(([, p]) =>
-      (p.fromRequestKey && p.fromRequestKey === req.key) ||
-      ((p.coversMonthKey || "") === (req.coversMonthKey || "") &&
-       (p.amountMinor || 0) === (req.amountMinor || 0) &&
-       (p.note || "") === "Approved request")
-    );
-    if (match) {
-      paymentKey = match[0];
-      amount = match[1]?.amountMinor || 0;
+    if (paymentKey) {
+      await fbRemove(ref(db, "payments/" + uid + "/" + paymentKey));
+      await recalcMemberTotal(uid);
     }
   }
 
-  if (!paymentKey) return 0;
+  await update(ref(db, "paymentRequests/" + req.key), {
+    status: "denied",
+    decidedByEmail: actor?.email || "",
+    decidedByName: displayNameFor(actor),
+    decidedAtMillis: serverTimestamp(),
+    approvedPaymentKey: ""
+  });
 
-  await fbRemove(ref(db, "payments/" + uid + "/" + paymentKey));
-  await bumpMemberTotal(uid, -amount);
-  return amount;
+  return removedMinor;
 }
 
-/** Add (or subtract) from a member's cached lifetime total, never below zero. */
-async function bumpMemberTotal(uid, deltaMinor) {
-  if (!uid || !deltaMinor) return;
-  const memberRef = ref(db, "members/" + uid);
-  const snap = await get(memberRef);
-  if (!snap.exists()) return;
-  const cur = snap.val()?.totalPaidMinor || 0;
-  await update(memberRef, { totalPaidMinor: Math.max(0, cur + deltaMinor) });
+/** Owner-only: drop a request and its proof image together. */
+async function deleteRequestItem(req) {
+  await update(ref(db), {
+    [`paymentRequests/${req.key}`]: null,
+    [`paymentProofs/${req.key}`]: null
+  });
 }
 
 async function markHandoverPaid(handover, actor) {
   await update(ref(db, "handovers/" + handover.key), {
     status: "paid",
     paidByEmail: actor?.email || "",
-    paidAtMillis: serverTimestamp()
+    paidAtMillis: Date.now()
+  });
+}
+
+async function revertHandoverToPending(handover) {
+  await update(ref(db, "handovers/" + handover.key), {
+    status: "pending",
+    paidByEmail: "",
+    paidAtMillis: 0
   });
 }
 
 // ---------------- Owner-only: edit a decided payment request ----------------
 
 /**
- * Lets the owner flip an already-decided request.
+ * Flip an already-decided request.
  *
- *   Denied  -> Approved : records the payment (same path as a fresh approval)
- *   Approved -> Denied  : deletes the recorded payment and recalculates the
- *                         member's total. Destructive, so it gets a warning
- *                         and a typed-out consequence rather than a plain OK.
+ *   Denied  -> Approved : records the payment, same path as a fresh approval
+ *   Approved -> Denied  : deletes the recorded payment and recomputes totals
  */
 function openDecisionEditor(req, actor) {
-  const wasApproved = req.status === "approved";
-  const who = req.memberName || (req.memberEmail || "").split("@")[0] || "this member";
+  const wasApproved = statusOf(req) === "approved";
+  const who = req.memberName || req.memberEmail || "this member";
 
   const dialog = document.createElement("div");
   dialog.className = "modal-overlay";
@@ -601,24 +715,23 @@ function openDecisionEditor(req, actor) {
 
         ${wasApproved ? `
           <div class="danger-note">
-            <strong>Changing this to Denied deletes the recorded payment.</strong>
-            The ${escapeHtml(formatRupees(req.amountMinor))} logged for
-            ${escapeHtml(monthLabel(req.coversMonthKey))} will be removed from
-            ${escapeHtml(who)}'s record, and every total that includes it -
-            their year total, the monthly collection chart and the pending
-            balance - is recalculated. This can't be undone.
+            <strong>Currently APPROVED.</strong>
+            Changing to Denied will delete the payment recorded by the approval
+            and reduce ${escapeHtml(who)}'s total. Every figure that includes it —
+            their year total, the monthly collection chart, the pending balance —
+            is recalculated. This cannot be undone automatically.
           </div>
         ` : `
           <div class="info-note">
-            Changing this to Approved records a
+            <strong>Currently DENIED.</strong>
+            Changing to Approved will record the
             ${escapeHtml(formatRupees(req.amountMinor))} payment for
-            ${escapeHtml(monthLabel(req.coversMonthKey))} against
-            ${escapeHtml(who)}, exactly as approving it the first time would have.
+            ${escapeHtml(monthLabel(req.coversMonthKey))} against ${escapeHtml(who)}.
           </div>
         `}
       </div>
       <div class="modal-actions">
-        <button class="modal-btn" id="de-cancel">Keep as is</button>
+        <button class="modal-btn" id="de-cancel">Cancel</button>
         <button class="modal-btn ${wasApproved ? "destructive" : "primary"}" id="de-flip">
           ${wasApproved ? "Change to Denied" : "Change to Approved"}
         </button>
@@ -637,32 +750,19 @@ function openDecisionEditor(req, actor) {
     btn.textContent = "Working...";
     try {
       if (wasApproved) {
-        const removed = await revokePaymentForRequest(req);
-        await update(ref(db, "paymentRequests/" + req.key), {
-          status: "denied",
-          decidedByEmail: actor?.email || "",
-          decidedByName: displayNameFor(actor),
-          decidedAtMillis: serverTimestamp(),
-          paymentKey: "",
-          editedByEmail: actor?.email || "",
-          editedAtMillis: serverTimestamp()
-        });
+        const removed = await revertApprovedRequest(req, actor);
         window.showSnackbar?.(removed > 0
-          ? "Changed to Denied - " + formatRupees(removed) + " payment deleted"
-          : "Changed to Denied");
+          ? "Approval reverted — payment removed"
+          : "Approval reverted");
       } else {
-        await approvePaymentRequest(req, actor);
-        await update(ref(db, "paymentRequests/" + req.key), {
-          editedByEmail: actor?.email || "",
-          editedAtMillis: serverTimestamp()
-        });
-        window.showSnackbar?.("Changed to Approved - payment recorded");
+        const ok = await approvePaymentRequest(req, actor, true);
+        window.showSnackbar?.(ok ? "Changed to Approved — payment recorded" : "Couldn't approve — try again");
       }
       close();
     } catch (e) {
       btn.disabled = false;
       btn.textContent = wasApproved ? "Change to Denied" : "Change to Approved";
-      window.showSnackbar?.("Couldn't change: " + (e.message || "error"));
+      window.showSnackbar?.("Couldn't revert — try again");
     }
   });
 }

@@ -23,8 +23,10 @@ Files included:
   handover.js             — handovers list, dialog, document attachments
   payments.js             — member's My Payments screen
   activity.js             — admin Activity feed (replaces Discussion)
+  reminder.js             — admin Reminder tab (unpaid this month + SMS)
+  settings.js             — owner Settings (gear on Home)
   database.rules.json     — Realtime Database security rules (see below)
-  ANDROID-COMPAT.md       — attachment wire format + Android gap analysis
+  ANDROID-COMPAT.md       — the Android data contract. READ THIS FIRST.
 
 REMOVED in this build: discussion.js. The group chat and the online-presence
 strip are gone from both clients.
@@ -91,52 +93,68 @@ Member Home simplified
   charts and the share button.
 
 
-Attachment storage
-------------------
+Synced with Android
+-------------------
 
-Attachments are BARE base64 (no "data:...;base64," prefix, so Android's
-Base64.encodeToString/decode work directly) in the Realtime Database, with the
-blob and its index deliberately at different paths:
+This build is aligned field-by-field with the Android app and verified against
+a production database export. Nine data contracts disagreed before; all nine
+now match. Two of them were destructive:
 
-  /handovers/{key}/documents/{docId}  ->  { name, mime, sizeBytes }
-  /handoverDocs/{key}/{docId}         ->  { ..., data }
+  * handoversCounter — the web wrote handoversCounter/value (an object) while
+    Android reads the node as a plain number. The first handover created on
+    the web would have wrecked Android's application numbering. It is now a
+    bare number, formatted H%03d ("H005") like the existing rows.
 
-  /paymentRequests/{key}.proofId      ->  "<proofId>"
-  /payments/{uid}/{key}.proofId       ->  "<proofId>"
-  /paymentProofs/{proofId}            ->  { ..., data }
+  * totalPaidMinor — the web incremented it, Android recomputes it. Mixing
+    the two makes a payment deleted on Android leave the web total too high.
+    The web now recomputes from /payments as well.
+
+Attachments are BARE base64 (no "data:...;base64," prefix) with `type` as a
+file EXTENSION ("jpg" / "pdf"), not a mime type:
+
+  /handovers/{key}/documents/{docId} -> { name, type, sizeBytes,
+                                          uploadedAtMillis, uploadedByEmail }
+  /handoverDocs/{key}/{docId}        -> { name, type, base64 }
+
+  /paymentRequests/{key}.proofName   -> "upi.jpg"   (the only flag)
+  /paymentProofs/{key}               -> { name, type, base64 }
+                                        keyed by the REQUEST key
 
 The split matters: the handover list and the Activity feed subscribe to their
 parent nodes, so inline blobs would mean re-downloading every megabyte on
-every change. Blobs load only when someone taps View. An approved request and
-its payment row share one proofId rather than copying the image.
+every change. Blobs load only when someone taps View.
 
-The Android app in its current form has NO attachment support, so documents
-uploaded here are stored correctly but invisible there. See ANDROID-COMPAT.md
-for the exact format the Android side needs to implement, plus the other
-places the two clients have drifted apart (the join queue being the important
-one). Reading on the web is format-tolerant, so slight naming drift on the
-Android side still opens here.
+Reading is deliberately lenient, so the rows an earlier build of this app left
+in /paymentProofs in a different shape still open.
+
+ANDROID-COMPAT.md has the full contract, the one deliberate behavioural
+difference, and the Android-side bug worth fixing.
 
 
 Database rules
 --------------
 
-database.rules.json is new. Paste it into Firebase Console > Realtime
-Database > Rules and Publish. Without it, /joinRequests writes may be rejected
-and the join queue will not work.
+database.rules.json is YOUR current rule set with two nodes added: /settings
+and /reminderLog were missing, and an unlisted path in Realtime Database is
+DENIED. Until you publish it:
 
-Read the comment block at the top before publishing — it explains what the
-rules can and cannot enforce (RTDB rules have no queries, so "is this email in
-/admins" is not checkable; the enforceable boundary is "does this account have
-an approved member row").
+  * Settings > Save link / Save reminder silently fails on BOTH clients
+  * the Share & refer card can't read apkLink
+  * "Reminder given by ..." never appears on the Reminder tab
+
+Nothing else was tightened, on purpose — both apps share these paths and a
+stricter rule would break whichever client writes it differently. The comment
+block at the end explains what the rules do and don't enforce, and which
+single check would be a safe improvement.
 
 
 Share link
 ----------
 
-The card prints whatever origin the app is served from. To print something
-else (a short link, a custom domain), set SHARE_URL_OVERRIDE at the top of
-share-card.js.
+The card prints /settings/apkLink — the same value Android uses — which the
+owner edits in Settings. If it's empty the web falls back to whatever origin
+the app is served from, rather than Android's "www.drive_dummy/HKF.apk"
+placeholder.
 
 
 Year filter applies to:
@@ -145,7 +163,12 @@ Year filter applies to:
   - Members: status pills, filter chips, export start year
   - Handover: paid scoped to year, pending always shown
 
-Activity and Admins are unchanged by year (always all-time).
+Activity, Reminder and Settings are unchanged by year. Reminder is always
+about the CURRENT month, matching Android.
+
+Admin tabs now match Android: Home / Members / Handover / Activity / Reminder.
+There is no Admins tab — admin management moved into Settings, reached from
+the gear on Home (owner only).
 
 
 Install / deploy:
@@ -153,7 +176,8 @@ Install / deploy:
   2. Delete the old web/discussion.js — it is no longer imported.
   3. Verify your firebase-config.js and Logo.png are still there
      (the zip does not include them).
-  4. Publish database.rules.json in the Firebase console.
+  4. Publish database.rules.json in the Firebase console. This one is not
+     optional — /settings and /reminderLog are denied until you do.
   5. Commit and push to GitHub:
        git add web/
        git rm web/discussion.js

@@ -1,153 +1,137 @@
-# Android ↔ Web compatibility
+# Android ↔ Web data contract
 
-Findings from reading the Android source (`scratch.zip`, package
-`com.hasnainkarimain.foundation`) against this web build.
+The web app has been aligned field-by-field with the Android build in
+`scratch 3.zip`, verified against the production RTDB export. Every shape
+below was checked against real data, not inferred from the Kotlin alone.
 
-## Why attachments don't cross over
+## What was actually wrong
 
-**The Android app has no attachment feature.** There is nothing to be
-incompatible with — it is not a format mismatch, an encoding difference, or a
-rules problem.
+Nine contracts disagreed. In every case Android was treated as correct and the
+web was changed to match.
 
-Evidence, from a full-tree search of `app/src/main/java`:
+| # | Contract | Web was writing | Android expects (and now web writes) |
+|---|---|---|---|
+| 1 | Handover doc blob | `{name, mime, sizeBytes, data:"data:image/jpeg;base64,…", uploadedBy…}` | `{name, type:"jpg", base64:"/9j/…"}` |
+| 2 | Handover doc index | `{name, mime, sizeBytes}` | `{name, type, sizeBytes, uploadedAtMillis, uploadedByEmail}` |
+| 3 | Payment proof key | `/paymentProofs/{newPushId}`, request carried `proofId` | `/paymentProofs/{requestKey}`, request carries **`proofName` only** |
+| 4 | Payment proof blob | `{name, mime, sizeBytes, data, uploadedBy…}` | `{name, type, base64}` |
+| 5 | Approved-payment link | `paymentKey` | `approvedPaymentKey` |
+| 6 | Payment row | included a `dateMillis` field | `{coversMonthKey, amountMinor, category, note, batchKey, recordedByEmail, recordedAtMillis}` — no `dateMillis` |
+| 7 | Join request | `{uid, emailLower, photoUrl, createdAtMillis, status:"declined"}` | `{email, displayName, requestedAtMillis, status:"denied", decidedBy…}` |
+| 8 | Pre-registered member | `push()` key + `pending:true` field | key prefixed **`pending_`**, no flag field |
+| 9 | Member record | added a `fullName` field | no such field — `displayName` is the name |
 
-| Looked for | Result |
-|---|---|
-| `handoverDocs` | 0 references |
-| `paymentProofs` | 0 references |
-| `Base64` (file encoding) | 0 references |
-| `documents` field on handovers | not in `HandoverApplication` or `HandoverRecord` |
-| `proofId` / proof fields | not in `PaymentRequest` or `PaymentRequestRecord` |
+Two of these were destructive rather than merely incompatible:
 
-The RTDB paths Android touches are exactly: `admins`, `members`,
-`membersCounter`, `payments`, `paymentRequests`, `handovers`,
-`handoversCounter`, `messages`, `presence`, `notifications`, `.info/connected`.
+**`handoversCounter` would have broken Android's numbering.** The web wrote
+`handoversCounter/value` (an object); Android reads the node itself as a
+`Long` (`snapshot.value as? Long`). The first handover created on the web
+would have replaced the scalar `4` with `{value: 1}`, after which every
+Android attempt to allocate an application number reads null → starts again at
+`H001` → duplicate numbers. Fixed: the counter is a bare number and the format
+is `H%03d` ("H005"), continuing production's existing H001–H004.
 
-So: a document uploaded on the web is stored correctly and is readable — the
-Android app just has no code that looks for it. And Android can't originate one.
+**`totalPaidMinor` drift.** The web incremented it; Android always recomputes
+it as the sum of `/payments/{uid}/*`. Mixed use means a payment deleted on
+Android leaves the web's running total permanently high. The web now
+recomputes too, everywhere.
 
-Your security rules are fine. Both `/handoverDocs` and `/paymentProofs` are
-`auth != null` for read and write, so neither client is being denied.
+The stray row this left in production — `/paymentProofs/-OzziQZyZjuD6RPq2y1V`
+in the old `{data, mime, …}` shape — still opens: the reader is deliberately
+lenient (see below).
 
-## Good news: nothing is being corrupted
+## The contract
 
-Two things that could have gone badly, checked and cleared:
-
-- **Unknown fields don't crash Android.** The web writes fields Android's data
-  classes don't declare (`documents`, `proofId`, `fullName`, `claimedFromKey`,
-  …). Firebase's `CustomClassMapper` only *throws* on unknown properties when a
-  class carries `@ThrowOnExtraProperties`; there are none in the codebase. It
-  logs a warning to logcat and moves on. If the logcat noise bothers you, add
-  `@IgnoreExtraProperties` to `HandoverRecord`, `MemberRecord` and
-  `PaymentRequestRecord`.
-- **Android edits don't wipe web data.** `updateHandover` and the member edit
-  path both use `updateChildren` (a merge), not `setValue` (a replace). The only
-  `setValue` calls on a whole node are at creation time. So editing a handover
-  on Android will not delete its `documents` index.
-
-## Wire format for the Android implementation
-
-`data` is **bare base64** — no `data:image/jpeg;base64,` prefix. That is
-`Base64.encodeToString(bytes, Base64.NO_WRAP)` in, `Base64.decode(s,
-Base64.DEFAULT)` out, with no string surgery on either side. The web strips the
-prefix its `FileReader` produces before writing.
+`base64` is **bare** — no `data:image/jpeg;base64,` prefix. That is what
+`Base64.encodeToString(bytes, NO_WRAP)` emits and what
+`Base64.decode(s, DEFAULT)` expects. `type` is a **file extension**
+(`"jpg"` / `"pdf"`), not a mime type; feeding it to a browser `Blob`
+constructor unchanged produces a file the OS refuses to open, which is worth
+knowing if you touch `attachments.js`.
 
 ```
-/handovers/{key}/documents/{docId} = {     // index only — no blob here
-  name:      String,      // "receipt.jpg"
-  mime:      String,      // "image/jpeg" | "image/png" | "application/pdf"
-  sizeBytes: Long
-}
+/handovers/{key}/documents/{docId} = { name, type, sizeBytes,
+                                       uploadedAtMillis, uploadedByEmail }
+/handoverDocs/{key}/{docId}        = { name, type, base64 }
 
-/handoverDocs/{key}/{docId} = {            // the blob
-  name, mime, sizeBytes,
-  data:             String,   // bare base64
-  uploadedByEmail:  String,
-  uploadedAtMillis: Long
-}
+/paymentRequests/{key}.proofName   = "upi.jpg"        // the only flag
+/paymentProofs/{key}               = { name, type, base64 }   // key = REQUEST key
 
-/paymentRequests/{key}.proofId = "<proofId>"     // index
-/payments/{uid}/{key}.proofId  = "<proofId>"     // same id — the blob is shared,
-                                                 // not copied, on approval
-/paymentProofs/{proofId} = {
-  name, mime, sizeBytes, data,
-  uploadedByUid, uploadedByEmail, uploadedAtMillis
-}
+/members/{uid}          = { memberId, displayName, email, role, joinedAtMillis,
+                            totalPaidMinor, contactNumber, currentAddress,
+                            permanentAddress, occupation }
+/members/pending_{k}    = same shape, for someone who hasn't signed in yet
+/payments/{uid}/{key}   = { coversMonthKey, amountMinor, category, note,
+                            batchKey, recordedByEmail, recordedAtMillis }
+/joinRequests/{uid}     = { email, displayName, requestedAtMillis, status,
+                            decidedByEmail, decidedByName, decidedAtMillis }
+/settings               = { apkLink, reminderDay, reminderText }
+/reminderLog            = { monthKey, byName, byEmail, atMillis }
+/handoversCounter       = 4          // bare number
+/membersCounter         = 14         // bare number
 ```
 
-**The index/blob split is load-bearing.** The handover list and the Activity
-feed hold `ValueEventListener`s on `/handovers` and `/paymentRequests`. If the
-base64 lived inline, every listener would re-download every megabyte on every
-unrelated change. Write the blob to its own top-level node and keep only
-`name`/`mime`/`sizeBytes` on the parent. Fetch blobs one key at a time, on tap.
+Index and blob are written in **one multi-path `update()`**, so a failure
+can't leave a card row pointing at nothing — same as Android.
 
-Matching Kotlin:
+Reading is lenient on purpose. `normalizeAttachment()` accepts
+`base64`/`data`/`dataBase64`/`content`, `type`/`mime`/`mimeType`,
+`name`/`fileName`, bare and data-URL encodings, `Base64.DEFAULT`'s embedded
+newlines, URL-safe alphabets and missing padding, and sniffs the type from
+magic bytes when nothing declares one. Writing picks exactly one shape;
+reading forgives everything already in the database.
 
-```kotlin
-data class HandoverDocIndex(
-    val name: String = "",
-    val mime: String = "",
-    val sizeBytes: Long = 0L
-)
+## Ported to web in this build
 
-data class HandoverDocBlob(
-    val name: String = "",
-    val mime: String = "",
-    val sizeBytes: Long = 0L,
-    val data: String = "",              // bare base64
-    val uploadedByEmail: String = "",
-    val uploadedAtMillis: Long = 0L
-)
+- **Reminder tab** (admin). Unpaid = no `/payments/{uid}/*` row whose
+  `coversMonthKey` equals the current device-local month. Amount and category
+  are irrelevant; `pending_` rows are included; the year picker does not apply.
+  `sms:` links, and `/reminderLog` records who sent the round (it self-expires
+  when the month rolls over).
+- **Settings** (owner), behind the gear on Home: `apkLink`, `reminderDay`
+  (1–28, blank = off), `reminderText`, Manage admins, and the danger-zone
+  wipe of `/paymentRequests` + `/joinRequests` + `/paymentProofs`.
+- **Member reminder banner** on Payments, from `reminderDay` onward, for
+  members who haven't paid the current month.
+- **Activity**: owner `✕` delete on request and join cards, "Move to pending"
+  on paid handovers, transaction-guarded status claims so two admins tapping
+  Approve can't both record the payment.
+- **Nav** now matches Android: Home / Members / Handover / Activity /
+  Reminder. The Admins tab is gone — it lives inside Settings.
+- **Share card** prints `/settings/apkLink`, and the share text is Android's
+  wording verbatim, so a forwarded message reads the same from either app.
 
-// write
-val docId = database.getReference("handoverDocs").child(key).push().key!!
-val b64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
-database.getReference("handoverDocs/$key/$docId")
-    .setValue(HandoverDocBlob(name, mime, bytes.size.toLong(), b64, email, System.currentTimeMillis()))
-database.getReference("handovers/$key/documents/$docId")
-    .setValue(HandoverDocIndex(name, mime, bytes.size.toLong()))
+## One deliberate difference
 
-// read
-val bytes = Base64.decode(blob.data, Base64.DEFAULT)
-```
+`AuthViewModel.resolveMembership()` calls `joinRequestRepository.submit()`
+unconditionally, and `submit()` rewrites a **denied** row back to pending. On
+Android that means a declined person silently rejoins the queue every time
+they open the app: the "Request declined" screen is unreachable, and an
+admin's Discard is undone on the next launch, so the same request keeps
+reappearing in Activity.
 
-Delete the index child first, then the blob — an orphan blob is invisible and
-harmless, a dangling index row is a broken button.
+The web only submits when there is no row at all, and lets the person re-apply
+deliberately with "Request again". Same data shape either way — this is
+behaviour, not schema — but it is worth fixing on Android too: in
+`resolveMembership`, read the row first and only call `submit()` when it is
+absent.
 
-The web reader is deliberately lenient (`normalizeAttachment` in
-`attachments.js`): it accepts `data` / `base64` / `dataBase64` / `content`,
-`mime` / `mimeType` / `contentType`, `name` / `fileName` / `filename`, both bare
-and data-URL encodings, `Base64.DEFAULT`'s embedded newlines, URL-safe base64,
-and missing padding. It sniffs the type from magic bytes when no mime is stored.
-So if the Android naming drifts slightly, the web will still open the file — but
-please match the shape above so it goes the other way too.
+## Rules
 
-## Other gaps in the same Android snapshot
+`database.rules.json` is your rule set with two nodes added: **`/settings` and
+`/reminderLog` were missing**, and an unlisted path in Realtime Database is
+denied. Until you publish it, Settings → Save silently fails on both clients,
+the share card can't read `apkLink`, and "Reminder given by …" never appears.
+The `joinRequests` index also named `requestedAtMillis` — which is correct and
+now matches what both clients write.
 
-The build you sent predates most of the feature list. Worth knowing, roughly in
-order of how much it matters:
-
-1. **Join approval is bypassed on Android.** There is no `joinRequests` anywhere
-   in the Android source, and `MembersRepository.ensureMemberExists()` still
-   auto-creates `/members/{uid}` on first sign-in. Anyone who signs in through
-   the Android app therefore walks straight into the foundation with no
-   approval, and the web's queue never sees them. **This defeats the join gate
-   entirely** — worth fixing before the attachments.
-2. **Member profile fields are invisible on Android.** `MemberRecord` has only
-   `memberId`, `displayName`, `email`, `role`, `joinedAtMillis`,
-   `totalPaidMinor`. No `fullName`, `contactNumber`, `currentAddress`,
-   `permanentAddress`, `occupation`. Android won't display or capture them. It
-   won't erase them either (see above).
-3. **Discussion still exists on Android** — `messages` and `presence` are live
-   there, and the web has removed both. Members using the two clients see
-   different apps.
-4. **`paymentRequests.paymentKey` is web-only.** The web stamps it on approval so
-   the owner's Approved→Denied revoke can delete exactly the right payment row.
-   For requests approved on Android the web falls back to matching on
-   month + amount + `note == "Approved request"`, which works but is a
-   heuristic. Writing `paymentKey` on the Android approve path removes the guess.
-5. `joinRequests` in your rules is indexed on `requestedAtMillis`, but the web
-   writes `createdAtMillis`. Harmless today (nothing queries by it), but the
-   index won't do anything until the names agree.
-
-The hand-rolled XLSX writer is present and matches — that one is fine.
+Worth knowing: only `/admins` is genuinely enforced (owner email, checked
+server-side). Everywhere else any signed-in account can write, so a signed-in
+non-member could in principle write `/members/{their uid}` and skip the queue.
+Rules have no queries, so "is this email in /admins" is not expressible —
+`/admins` is keyed by push id and cannot be scanned. The cheap check that
+*would* help is `root.child('members').child(auth.uid).exists()` on
+`/handovers`, `/paymentRequests` and `/paymentProofs`; only approved members
+ever write those in either client. `/members` itself can't take that check —
+Android's `ensureMemberExists` and the `pending_` claim both write it for
+someone who is not yet a member.

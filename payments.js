@@ -1,18 +1,24 @@
 // Member's My Payments screen.
-// - Header card with total + status pill + 12-month gold bar, with each
-//   month's amount printed above its segment
-// - History list in month order (Jan first), confirmed payments and open
-//   requests together
-// - + Request pill that opens a request dialog, optionally with a payment
-//   screenshot attached as proof
+// - Reminder banner (driven by /settings/reminderDay + reminderText)
+// - Header card with total + status pill + 12-month bar, each month's amount
+//   printed above its segment
+// - History in month order (Jan first), confirmed payments and open requests
+//   together
+// - + Request pill, optionally with a payment screenshot attached as proof
+//
+// Proof storage matches Android: one image per request, stored at
+// /paymentProofs/{requestKey}, with `proofName` on the request as the only
+// flag. There is no proofId and nothing is copied onto the payment row when a
+// request is approved - the approved request keeps the image, and this screen
+// looks it up via approvedPaymentKey.
 
 import {
   getDatabase,
   ref,
   onValue,
+  get,
   push,
   set,
-  update,
   serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js";
 
@@ -23,7 +29,7 @@ import {
   pickFiles,
   prepareAttachment,
   savePaymentProof,
-  deletePaymentProof,
+  removePaymentProof,
   viewPaymentProof,
   formatBytes,
   ACCEPT_IMAGES
@@ -31,6 +37,9 @@ import {
 
 const db = getDatabase(firebaseApp);
 const MONTH_LABELS = ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"];
+const MONTH_TITLE = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+
+const DEFAULT_REMINDER = "Assalamualekum! Please contribute for the current month";
 
 function formatRupees(minor) {
   if (!minor || minor <= 0) return "₹0";
@@ -40,9 +49,8 @@ function formatRupees(minor) {
 }
 
 /**
- * Compact amount for the labels sitting above the 12-month bar. Twelve full
- * "₹1,200"s will not fit across a phone, so anything four digits or longer
- * collapses to K / L.
+ * Compact amount for the labels above the 12-month bar. Twelve full "₹1,200"s
+ * will not fit across a phone, so anything four digits or longer collapses.
  */
 function formatRupeesCompact(minor) {
   if (!minor || minor <= 0) return "";
@@ -67,8 +75,21 @@ function nextNMonthKeys(start, n) {
 }
 
 function monthLabel(monthKey) {
-  const [y, m] = monthKey.split("-");
+  const [y, m] = String(monthKey || "").split("-");
+  if (!m) return "";
   return MONTH_LABELS[parseInt(m, 10) - 1] + " " + y;
+}
+
+function monthTitle(monthKey) {
+  const [y, m] = String(monthKey || "").split("-");
+  if (!m) return "";
+  return MONTH_TITLE[parseInt(m, 10) - 1] + " " + y;
+}
+
+/** Device-local current month, matching Android's MonthKey.current(). */
+function currentMonthKey() {
+  const d = new Date();
+  return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0");
 }
 
 function monthKeyFromMillis(millis) {
@@ -104,6 +125,7 @@ export function renderPayments(container) {
   const contentEl = container.querySelector("#payments-content");
   let payments = [];
   let myRequests = [];
+  let settings = { reminderDay: 0, reminderText: "" };
 
   const unsubPayments = onValue(ref(db, "payments/" + user.uid), snap => {
     const val = snap.val() || {};
@@ -119,22 +141,45 @@ export function renderPayments(container) {
     rerender();
   });
 
+  // One-shot, like Android: the reminder settings don't change mid-session
+  // often enough to justify a live listener on every member's device.
+  get(ref(db, "settings")).then(snap => {
+    const v = snap.val() || {};
+    settings = { reminderDay: Number(v.reminderDay) || 0, reminderText: v.reminderText || "" };
+    rerender();
+  }).catch(() => {});
+
+  /**
+   * Reminder banner: shown from `reminderDay` of the month onwards, to members
+   * who have no payment covering the CURRENT month. Deliberately independent
+   * of the year picker - looking at 2027 shouldn't hide this month's nudge.
+   */
+  function reminderBanner() {
+    const day = settings.reminderDay;
+    if (!(day >= 1 && day <= 28)) return "";
+    if (new Date().getDate() < day) return "";
+    const month = currentMonthKey();
+    const paidThisMonth = payments.some(p => (p.coversMonthKey || "") === month);
+    if (paidThisMonth) return "";
+    const text = settings.reminderText ||
+      `Your contribution for ${monthTitle(month)} is pending. Tap + Request after paying to submit it.`;
+    return `
+      <div class="reminder-banner">
+        <div class="reminder-banner-label">PAYMENT REMINDER</div>
+        <div class="reminder-banner-text">${escapeHtml(text)}</div>
+      </div>
+    `;
+  }
+
   function rerender() {
     const year = getSelectedYear();
     const chartKeys = nextNMonthKeys(chartStartForYear(year), 12);
-
-    // Filter payments + requests to the selected year so totals, bar, and
-    // history all reflect the chosen window. Year membership uses
-    // coversMonthKey ("YYYY-MM"), which is the canonical year a payment
-    // counts toward (regardless of when it was actually recorded).
     const yearPrefix = String(year) + "-";
     const yearPayments = payments.filter(p => (p.coversMonthKey || "").startsWith(yearPrefix));
     const yearRequests = myRequests.filter(r => (r.coversMonthKey || "").startsWith(yearPrefix));
 
     const totalMinor = yearPayments.reduce((s, p) => s + (p.amountMinor || 0), 0);
 
-    // Amount per month, so each bar segment can be labelled with what it's
-    // actually worth rather than just on/off.
     const amountByMonth = {};
     yearPayments.forEach(p => {
       const k = p.coversMonthKey;
@@ -148,26 +193,16 @@ export function renderPayments(container) {
     }));
     const paidCount = monthCells.filter(c => c.paid).length;
 
-    // Status pill semantics with year filter:
-    //   - "Not started" if no payments in selected year
-    //   - "Full paid" if every month from Jan-of-year through min(today, Dec-of-year) is paid
-    //   - "Up to {month} {year}" otherwise (latest paid month within the year)
-    // Cap "today" at the selected year's end so future-year viewing doesn't
-    // misreport: viewing 2027 in May 2026 should show "Not started" (no 2027
-    // payments) rather than "Up to Jan 2027" surprises.
+    // Status pill, capped at the selected year's end so viewing a future year
+    // reports "Not started" rather than a misleading "Up to Jan".
     const sortedPaid = monthCells.filter(c => c.paid).map(c => c.key).sort();
     const latestPaid = sortedPaid[sortedPaid.length - 1];
-    const now = new Date();
-    const todayKey = now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, "0");
+    const todayKey = currentMonthKey();
     const yearEndKey = year + "-12";
     const referenceKey = todayKey < yearEndKey ? todayKey : yearEndKey;
     const yearStartKey = year + "-01";
     let statusLabel, statusClass;
-    if (!latestPaid) {
-      statusLabel = "Not started";
-      statusClass = "pill-grey";
-    } else if (referenceKey < yearStartKey) {
-      // Selected year is entirely in the future relative to today
+    if (!latestPaid || referenceKey < yearStartKey) {
       statusLabel = "Not started";
       statusClass = "pill-grey";
     } else if (latestPaid >= referenceKey) {
@@ -175,21 +210,29 @@ export function renderPayments(container) {
       statusClass = "pill-green";
     } else {
       const [, lm] = latestPaid.split("-");
-      statusLabel = "Up to " + MONTH_LABELS[parseInt(lm, 10) - 1].slice(0, 3) + " " + year;
+      statusLabel = "Up to " + MONTH_TITLE[parseInt(lm, 10) - 1] + " " + year;
       statusClass = "pill-amber";
     }
 
-    // History reads as a calendar, not a changelog: Jan at the top, Dec at the
-    // bottom, with a still-open request slotted into the month it covers.
+    // An approved request keeps its proof image. Map the payment row it
+    // created back to the request so the confirmed row can show it read-only.
+    const proofByPaymentKey = {};
+    myRequests.forEach(r => {
+      if (r.proofName && r.approvedPaymentKey) proofByPaymentKey[r.approvedPaymentKey] = r;
+    });
+
+    // History reads as a calendar: Jan at the top, Dec at the bottom, with a
+    // still-open request slotted into the month it covers.
     const entries = [
       ...yearPayments.map(p => ({
         kind: "confirmed",
         monthKey: p.coversMonthKey || "",
         tie: p.recordedAtMillis || 0,
-        payment: p
+        payment: p,
+        proofRequest: proofByPaymentKey[p.key] || null
       })),
       ...yearRequests
-        .filter(r => r.status === "pending" || r.status === "denied")
+        .filter(r => (r.status || "pending") === "pending" || (r.status || "") === "denied")
         .map(r => ({
           kind: "request",
           monthKey: r.coversMonthKey || "",
@@ -203,6 +246,7 @@ export function renderPayments(container) {
     });
 
     contentEl.innerHTML = `
+      ${reminderBanner()}
       <div class="my-payments-card">
         <div class="mp-label">YOUR TOTAL PAID</div>
         <div class="mp-row">
@@ -244,10 +288,7 @@ export function renderPayments(container) {
         if (!confirm("Remove the payment proof from this request?")) return;
         btn.disabled = true;
         try {
-          await update(ref(db, "paymentRequests/" + btn.dataset.requestKey), {
-            proofId: "", proofName: "", proofMime: ""
-          });
-          await deletePaymentProof(btn.dataset.proofRemove);
+          await removePaymentProof(btn.dataset.proofRemove);
           window.showSnackbar?.("Proof removed");
         } catch (e) {
           btn.disabled = false;
@@ -261,7 +302,6 @@ export function renderPayments(container) {
     openRequestDialog(user);
   });
 
-  // Year-filter subscription: re-render when the global year picker changes.
   const unsubYear = onYearChange(() => rerender());
 
   return function teardown() {
@@ -274,13 +314,14 @@ export function renderPayments(container) {
 function renderHistoryRow(entry) {
   if (entry.kind === "confirmed") {
     const p = entry.payment;
-    const ml = monthLabel(p.coversMonthKey || "");
+    const ml = monthLabel(p.coversMonthKey);
     // Once approved the proof is part of the record - viewable, not editable.
-    const proof = p.proofId
+    const r = entry.proofRequest;
+    const proof = r
       ? `<div class="proof-strip">
            <span class="proof-tag">PROOF</span>
-           <span class="proof-name">${escapeHtml(p.proofName || "screenshot")}</span>
-           <button class="doc-btn" data-proof-view="${escapeHtml(p.proofId)}">View</button>
+           <span class="proof-name">${escapeHtml(r.proofName)}</span>
+           <button class="doc-btn" data-proof-view="${escapeHtml(r.key)}">View</button>
          </div>`
       : "";
     return `
@@ -300,18 +341,18 @@ function renderHistoryRow(entry) {
   }
 
   const r = entry.request;
-  const ml = monthLabel(r.coversMonthKey || "");
-  let pillClass, pillLabel;
-  if (r.status === "pending") { pillClass = "pill-amber"; pillLabel = "Pending Approval"; }
-  else { pillClass = "pill-red"; pillLabel = "Denied"; }
+  const ml = monthLabel(r.coversMonthKey);
+  const pending = (r.status || "pending") === "pending";
+  const pillClass = pending ? "pill-amber" : "pill-red";
+  const pillLabel = pending ? "Pending Approval" : "Denied";
 
   // While it's still a request the member owns the attachment and can swap it.
-  const proof = r.proofId
+  const proof = r.proofName
     ? `<div class="proof-strip">
          <span class="proof-tag">PROOF</span>
-         <span class="proof-name">${escapeHtml(r.proofName || "screenshot")}</span>
-         <button class="doc-btn" data-proof-view="${escapeHtml(r.proofId)}">View</button>
-         <button class="doc-btn danger" data-proof-remove="${escapeHtml(r.proofId)}" data-request-key="${escapeHtml(r.key)}">Remove</button>
+         <span class="proof-name">${escapeHtml(r.proofName)}</span>
+         <button class="doc-btn" data-proof-view="${escapeHtml(r.key)}">View</button>
+         ${pending ? `<button class="doc-btn danger" data-proof-remove="${escapeHtml(r.key)}">Remove</button>` : ""}
        </div>`
     : "";
 
@@ -332,7 +373,7 @@ function renderHistoryRow(entry) {
 }
 
 function openRequestDialog(user) {
-  let proof = null;   // prepared attachment, uploaded on submit
+  let proof = null;   // prepared attachment, uploaded after the request exists
 
   const dialog = document.createElement("div");
   dialog.className = "modal-overlay";
@@ -440,15 +481,7 @@ function openRequestDialog(user) {
     submitBtn.textContent = "Sending...";
 
     try {
-      // Upload the proof first: if the image write fails we'd rather leave no
-      // request at all than a request whose PROOF tag points at nothing.
-      let proofId = "", proofName = "", proofMime = "";
-      if (proof) {
-        proofId = await savePaymentProof(proof, user);
-        proofName = proof.name;
-        proofMime = proof.mime;
-      }
-
+      // The proof is keyed by the request, so the request has to exist first.
       const reqRef = push(ref(db, "paymentRequests"));
       await set(reqRef, {
         memberUid: user.uid,
@@ -464,11 +497,25 @@ function openRequestDialog(user) {
         decidedByEmail: "",
         decidedByName: "",
         decidedAtMillis: 0,
-        paymentKey: "",
-        proofId,
-        proofName,
-        proofMime
+        discussionMessageKey: "",
+        approvedPaymentKey: "",
+        proofName: proof ? proof.name : ""
       });
+
+      if (proof) {
+        try {
+          await savePaymentProof(reqRef.key, proof);
+        } catch (e) {
+          // The request stands; only the image failed. Clear the flag so the
+          // card doesn't advertise a proof that isn't there.
+          console.error("proof upload failed", e);
+          await set(ref(db, "paymentRequests/" + reqRef.key + "/proofName"), "").catch(() => {});
+          window.showSnackbar?.("Request sent, but the screenshot didn't upload");
+          close();
+          return;
+        }
+      }
+
       window.showSnackbar?.("Request submitted - awaiting approval");
       close();
     } catch (e) {

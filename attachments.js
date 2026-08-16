@@ -1,72 +1,65 @@
 // Shared attachment plumbing for handover documents and payment proofs.
 //
-// WIRE FORMAT - the Android client must match this exactly.
+// THE SHAPES BELOW ARE DICTATED BY THE ANDROID APP. Both clients read and
+// write the same nodes, so this file is a port of HandoverRepository's
+// document methods and PaymentProofRepository, not an independent design.
+// Verified against the production RTDB export.
 //
-//   /handovers/{key}/documents/{docId} = {      <- index, no blob
-//     name:      String,   // "receipt.jpg"
-//     mime:      String,   // "image/jpeg" | "application/pdf"
-//     sizeBytes: Long
+//   /handovers/{key}/documents/{docId} = {      <- index, rides the list listener
+//     name:             String,   // "Screenshot_20260814.jpg"
+//     type:             String,   // "jpg" | "pdf"   <- NOT a mime type
+//     sizeBytes:        Long,
+//     uploadedAtMillis: Long,
+//     uploadedByEmail:  String
 //   }
-//   /handoverDocs/{key}/{docId} = {             <- blob
-//     name, mime, sizeBytes,
-//     data:             String,  // BARE base64. NO "data:...;base64," prefix.
-//     uploadedByEmail:  String,
-//     uploadedAtMillis: Long
-//   }
-//
-//   /paymentRequests/{key}.proofId = "<proofId>"    <- index
-//   /payments/{uid}/{key}.proofId = "<proofId>"     <- index (same id, shared)
-//   /paymentProofs/{proofId} = {                    <- blob
-//     name, mime, sizeBytes, data,
-//     uploadedByUid, uploadedByEmail, uploadedAtMillis
+//   /handoverDocs/{key}/{docId} = {             <- blob, fetched only on View
+//     name:   String,
+//     type:   String,
+//     base64: String              // BARE base64, Base64.NO_WRAP
 //   }
 //
-// `data` is bare base64 so Android can use Base64.encodeToString(bytes,
-// NO_WRAP) and Base64.decode(s, DEFAULT) with no string surgery. On read the
-// web is deliberately lenient about all of this - see normalizeAttachment().
+//   /paymentRequests/{requestKey}.proofName = "upi.jpg"   <- the only flag
+//   /paymentProofs/{requestKey} = { name, type, base64 }  <- keyed by REQUEST
 //
-// The split is the whole point: the Handover list and the Activity feed
-// subscribe to their parent nodes, and if the base64 lived inline every
-// listener would re-download every megabyte on every change. Blobs are only
-// fetched when someone actually taps View.
+// Two things here are easy to get wrong and were both wrong in the first
+// version of this file:
 //
-// A payment proof keeps the SAME proofId when a request is approved, so the
-// confirmed payment row points at the already-uploaded blob instead of us
-// copying a megabyte around inside the database.
+//   * `type` is a file extension ("jpg"), not a mime type. Feeding it to a
+//     Blob constructor produces a file the OS can't open.
+//   * a payment proof is keyed by the payment-request key, not by an id of
+//     its own. There is exactly one proof per request, and clearing it means
+//     nulling that node — there is no proofId to chase.
+//
+// Writes go through a single multi-path update() so a failure can't leave a
+// blob without an index row (or vice versa), matching Android's behaviour.
 
 import {
   getDatabase,
   ref,
   get,
-  set,
   update,
-  push,
-  remove as fbRemove,
-  serverTimestamp
+  push
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js";
 
 import { firebaseApp } from "./firebase-init.js";
 
 const db = getDatabase(firebaseApp);
 
-// PDFs are stored as-is (we can't re-compress them client-side), so they get
-// a hard cap. Images are re-encoded below and almost always land far under it.
+// Android caps compressed images at ~1.5 MB and rejects anything larger.
 export const MAX_PDF_BYTES = 2 * 1024 * 1024;
 
-// Re-encode target for photos. 1400px on the long edge is enough to read a
-// UPI screenshot or a scanned form, and keeps the base64 payload ~100-300KB.
-const IMAGE_MAX_DIM = 1400;
-const IMAGE_QUALITY_STEPS = [0.72, 0.6, 0.5, 0.4];
-const IMAGE_TARGET_BYTES = 900 * 1024;
+// Match AttachmentUtils: 1600px long edge, quality ladder, ~1.5MB ceiling.
+const IMAGE_MAX_DIM = 1600;
+const IMAGE_QUALITY_STEPS = [0.75, 0.6, 0.45];
+const IMAGE_TARGET_BYTES = 1_500_000;
 
 export const ACCEPT_DOCS = "image/jpeg,image/jpg,image/png,application/pdf";
 export const ACCEPT_IMAGES = "image/jpeg,image/jpg,image/png";
 
 /**
  * Open the OS file picker and resolve with the chosen files. Resolves with an
- * empty array if the user cancels (there is no reliable cancel event, so a
- * cancelled picker simply never fires change and the promise settles when the
- * element is garbage — we resolve on focus-return as a fallback).
+ * empty array if the user cancels (there is no reliable cancel event, so we
+ * fall back to resolving when the window regains focus).
  */
 export function pickFiles({ multiple = false, accept = ACCEPT_DOCS } = {}) {
   return new Promise(resolve => {
@@ -87,8 +80,6 @@ export function pickFiles({ multiple = false, accept = ACCEPT_DOCS } = {}) {
     }
 
     input.addEventListener("change", () => finish(Array.from(input.files || [])));
-    // Cancel fallback: when the picker closes without a selection the window
-    // regains focus and no change event ever arrives.
     window.addEventListener("focus", () => {
       setTimeout(() => finish(Array.from(input.files || [])), 400);
     }, { once: true });
@@ -97,13 +88,17 @@ export function pickFiles({ multiple = false, accept = ACCEPT_DOCS } = {}) {
   });
 }
 
-function formatBytes(n) {
+export function formatBytes(n) {
   if (!n) return "0 KB";
   if (n < 1024) return n + " B";
   if (n < 1024 * 1024) return Math.round(n / 1024) + " KB";
   return (n / (1024 * 1024)).toFixed(1) + " MB";
 }
-export { formatBytes };
+
+/** "jpg" | "pdf" -> a mime type a Blob can actually use. */
+export function mimeForType(type) {
+  return String(type || "").toLowerCase() === "pdf" ? "application/pdf" : "image/jpeg";
+}
 
 function readAsDataUrl(file) {
   return new Promise((resolve, reject) => {
@@ -123,31 +118,20 @@ function loadImage(dataUrl) {
   });
 }
 
-/**
- * Drop the "data:<mime>;base64," header a browser FileReader/canvas produces.
- *
- * We store BARE base64 on the wire. That is deliberate: it is exactly what
- * Android's Base64.encodeToString(bytes, NO_WRAP) emits and what
- * Base64.decode(s, DEFAULT) expects, so the Android client can read and write
- * these nodes without any string surgery. The web pays the trivial cost of
- * re-adding the header (or building a Blob) at display time instead.
- */
+/** Drop the "data:<mime>;base64," header so we store what Android stores. */
 function stripDataUrl(dataUrl) {
   const m = /^data:[^;,]*(;[^,]*)?,/.exec(dataUrl);
   return m ? dataUrl.slice(m[0].length) : dataUrl;
 }
 
-/** Rough decoded size of a data URL's base64 payload, in bytes. */
-function dataUrlBytes(dataUrl) {
-  const comma = dataUrl.indexOf(",");
-  const b64 = comma >= 0 ? dataUrl.slice(comma + 1) : dataUrl;
+function base64Bytes(b64) {
   const padding = b64.endsWith("==") ? 2 : b64.endsWith("=") ? 1 : 0;
   return Math.max(0, Math.floor(b64.length * 3 / 4) - padding);
 }
 
 /**
- * Turn a picked File into a storable attachment record.
- * Images are downscaled + re-encoded as JPEG; PDFs pass through with a cap.
+ * Turn a picked File into a storable attachment: { name, type, base64, sizeBytes }.
+ * Images are downscaled and re-encoded as JPEG; PDFs pass through with a cap.
  * Throws with a user-readable message on anything we can't take.
  */
 export async function prepareAttachment(file) {
@@ -163,17 +147,17 @@ export async function prepareAttachment(file) {
     if (file.size > MAX_PDF_BYTES) {
       throw new Error(`"${file.name}" is ${formatBytes(file.size)} — PDFs must be under 2 MB`);
     }
-    const dataUrl = await readAsDataUrl(file);
+    const base64 = stripDataUrl(await readAsDataUrl(file));
     return {
       name: file.name || "document.pdf",
-      mime: "application/pdf",
-      data: stripDataUrl(dataUrl),
-      sizeBytes: dataUrlBytes(dataUrl)
+      type: "pdf",
+      base64,
+      sizeBytes: base64Bytes(base64)
     };
   }
 
-  // Image: draw to a canvas at a bounded size, then step the JPEG quality
-  // down until it fits comfortably in a database row.
+  // Android names the output "{original base}.jpg" regardless of input format,
+  // so a PNG attached on either client shows the same filename on both.
   const original = await readAsDataUrl(file);
   const img = await loadImage(original);
   const scale = Math.min(1, IMAGE_MAX_DIM / Math.max(img.width, img.height));
@@ -191,22 +175,21 @@ export async function prepareAttachment(file) {
 
   let out = null;
   for (const q of IMAGE_QUALITY_STEPS) {
-    out = canvas.toDataURL("image/jpeg", q);
-    if (dataUrlBytes(out) <= IMAGE_TARGET_BYTES) break;
+    out = stripDataUrl(canvas.toDataURL("image/jpeg", q));
+    if (base64Bytes(out) <= IMAGE_TARGET_BYTES) break;
   }
   if (!out) throw new Error("Couldn't compress " + file.name);
 
   const baseName = (file.name || "image").replace(/\.[^.]+$/, "");
   return {
     name: baseName + ".jpg",
-    mime: "image/jpeg",
-    data: stripDataUrl(out),
-    sizeBytes: dataUrlBytes(out)
+    type: "jpg",
+    base64: out,
+    sizeBytes: base64Bytes(out)
   };
 }
 
-/** Convenience: prepare many files, collecting per-file errors instead of
- *  aborting the whole batch. Returns { ok: [...], errors: [message] }. */
+/** Prepare many files, collecting per-file errors instead of aborting. */
 export async function prepareAll(files) {
   const ok = [];
   const errors = [];
@@ -220,22 +203,18 @@ export async function prepareAll(files) {
   return { ok, errors };
 }
 
-// ---------------- Cross-client compatibility ----------------
+// ---------------- Reading (deliberately lenient) ----------------
 //
-// The Android app writes these same nodes, and it does not necessarily use
-// our field names or our encoding. Android's
-// Base64.encodeToString(bytes, NO_WRAP) produces BARE base64, while a
-// browser's FileReader.readAsDataURL produces "data:image/jpeg;base64,...".
-// Reading is where we can be generous, so we are: every alias below is
-// checked, and both encodings are accepted.
-//
-// Writing has to pick one shape - see writeShape() at the bottom of this
-// file for the single place that decides it.
+// The canonical shape is { name, type, base64 }, but this database already
+// contains rows written by an earlier version of this web app in a different
+// shape ({ name, mime, data: "data:image/jpeg;base64,..." }). Rather than
+// migrate them we read both, plus the obvious aliases, so no existing
+// attachment becomes unopenable.
 
-const DATA_KEYS = ["data", "base64", "dataBase64", "base64Data", "content", "fileData", "bytes", "imageBase64", "docBase64"];
-const MIME_KEYS = ["mime", "mimeType", "contentType", "type"];
-const NAME_KEYS = ["name", "fileName", "filename", "displayName", "title"];
-const SIZE_KEYS = ["sizeBytes", "size", "fileSize", "length", "byteCount"];
+const DATA_KEYS = ["base64", "data", "dataBase64", "base64Data", "content"];
+const TYPE_KEYS = ["type", "mime", "mimeType", "contentType"];
+const NAME_KEYS = ["name", "fileName", "filename", "displayName"];
+const SIZE_KEYS = ["sizeBytes", "size", "fileSize", "length"];
 
 function firstString(rec, keys) {
   for (const k of keys) {
@@ -253,7 +232,7 @@ function firstNumber(rec, keys) {
   return 0;
 }
 
-/** Sniff the type from the base64 payload's magic bytes when no mime is stored. */
+/** Last resort when nothing declares a type: read the payload's magic bytes. */
 function sniffMime(b64) {
   if (b64.startsWith("/9j/")) return "image/jpeg";
   if (b64.startsWith("iVBOR")) return "image/png";
@@ -264,8 +243,9 @@ function sniffMime(b64) {
 }
 
 /**
- * Coerce whatever shape a client stored into one we can render.
- * Returns { name, mime, sizeBytes, base64 } or null if there's no payload.
+ * Coerce any stored attachment row into { name, mime, sizeBytes, base64 },
+ * or null when there's no payload. Handles the "jpg"-vs-"image/jpeg"
+ * ambiguity: a value with no slash is treated as a file extension.
  */
 export function normalizeAttachment(rec) {
   if (!rec || typeof rec !== "object") return null;
@@ -273,8 +253,8 @@ export function normalizeAttachment(rec) {
   let raw = firstString(rec, DATA_KEYS);
   if (!raw) return null;
 
-  // Strip a data-URL header if there is one, and prefer the mime it declares
-  // over any separately-stored field - it describes the actual bytes.
+  // A data: URL declares its own type, and that beats any stored field
+  // because it describes the actual bytes.
   let declaredMime = "";
   const m = /^data:([^;,]*)(;[^,]*)?,/.exec(raw);
   if (m) {
@@ -282,21 +262,22 @@ export function normalizeAttachment(rec) {
     raw = raw.slice(m[0].length);
   }
 
-  // Android's NO_WRAP is clean, but DEFAULT inserts newlines every 76 chars
-  // and some encoders emit URL-safe base64. atob() rejects both.
+  // Base64.DEFAULT wraps at 76 chars; some encoders emit URL-safe alphabets.
   const base64 = raw.replace(/\s+/g, "").replace(/-/g, "+").replace(/_/g, "/");
   if (!base64) return null;
 
-  const mime = declaredMime || firstString(rec, MIME_KEYS) || sniffMime(base64);
-  const name = firstString(rec, NAME_KEYS) ||
-    ("attachment" + (mime.includes("pdf") ? ".pdf" : mime.includes("png") ? ".png" : ".jpg"));
+  let mime = declaredMime;
+  if (!mime) {
+    const stored = firstString(rec, TYPE_KEYS);
+    // "jpg"/"pdf" are extensions; "image/jpeg" is a mime type.
+    mime = stored.includes("/") ? stored : (stored ? mimeForType(stored) : "");
+  }
+  if (!mime) mime = sniffMime(base64);
 
-  return {
-    name,
-    mime,
-    base64,
-    sizeBytes: firstNumber(rec, SIZE_KEYS) || Math.floor(base64.length * 3 / 4)
-  };
+  const name = firstString(rec, NAME_KEYS) ||
+    ("attachment" + (mime.includes("pdf") ? ".pdf" : ".jpg"));
+
+  return { name, mime, base64, sizeBytes: firstNumber(rec, SIZE_KEYS) || base64Bytes(base64) };
 }
 
 function base64ToBlob(base64, mime) {
@@ -309,19 +290,18 @@ function base64ToBlob(base64, mime) {
 }
 
 /** Open an attachment in the browser's own viewer (new tab). */
-export function openAttachment(att) {
-  const norm = normalizeAttachment(att);
+export function openAttachment(rec) {
+  const norm = normalizeAttachment(rec);
   if (!norm) {
+    console.warn("unreadable attachment record", rec && Object.keys(rec));
     window.showSnackbar?.("Attachment is empty or in a format this app can't read");
-    console.warn("unreadable attachment record", att && Object.keys(att));
     return;
   }
   try {
     const url = URL.createObjectURL(base64ToBlob(norm.base64, norm.mime));
     const win = window.open(url, "_blank");
     if (!win) {
-      // Popup blocked - fall back to a download so the user still gets the
-      // file rather than a silent no-op.
+      // Popup blocked - fall back to a download so the user still gets it.
       const a = document.createElement("a");
       a.href = url;
       a.download = norm.name;
@@ -337,25 +317,25 @@ export function openAttachment(att) {
 // ---------------- Handover documents ----------------
 
 /**
- * Store one prepared attachment against a handover. Writes the blob and the
- * lightweight index entry, in that order, so a half-finished upload never
- * shows a card row pointing at nothing.
+ * Attach one prepared document to a handover. Index and blob are written in a
+ * single multi-path update, so a failure can't leave a card row pointing at
+ * nothing (Android's HandoverRepository.addDocument does the same).
  */
 export async function saveHandoverDoc(handoverKey, att, user) {
-  const docRef = push(ref(db, "handoverDocs/" + handoverKey));
-  const docId = docRef.key;
-  await set(docRef, {
-    name: att.name,
-    mime: att.mime,
-    sizeBytes: att.sizeBytes,
-    data: att.data,
-    uploadedByEmail: user?.email || "",
-    uploadedAtMillis: serverTimestamp()
-  });
-  await update(ref(db, "handovers/" + handoverKey + "/documents/" + docId), {
-    name: att.name,
-    mime: att.mime,
-    sizeBytes: att.sizeBytes
+  const docId = push(ref(db, "handoverDocs/" + handoverKey)).key;
+  await update(ref(db), {
+    [`handovers/${handoverKey}/documents/${docId}`]: {
+      name: att.name,
+      type: att.type,
+      sizeBytes: att.sizeBytes,
+      uploadedAtMillis: Date.now(),
+      uploadedByEmail: user?.email || ""
+    },
+    [`handoverDocs/${handoverKey}/${docId}`]: {
+      name: att.name,
+      type: att.type,
+      base64: att.base64
+    }
   });
   return docId;
 }
@@ -365,56 +345,61 @@ export async function loadHandoverDoc(handoverKey, docId) {
   return snap.val();
 }
 
+/** Remove index + blob together. */
 export async function removeHandoverDoc(handoverKey, docId) {
-  // Index first: if the blob delete fails we're left with an orphan blob,
-  // which is invisible and harmless. The reverse would leave a broken row.
-  await fbRemove(ref(db, "handovers/" + handoverKey + "/documents/" + docId));
-  await fbRemove(ref(db, "handoverDocs/" + handoverKey + "/" + docId)).catch(() => {});
-}
-
-/** Drop every blob for a handover (called when the handover itself is deleted). */
-export async function removeAllHandoverDocs(handoverKey) {
-  await fbRemove(ref(db, "handoverDocs/" + handoverKey)).catch(() => {});
-}
-
-// ---------------- Payment proofs ----------------
-
-/** Upload a proof image and return its stable proofId. */
-export async function savePaymentProof(att, user) {
-  const proofRef = push(ref(db, "paymentProofs"));
-  await set(proofRef, {
-    name: att.name,
-    mime: att.mime,
-    sizeBytes: att.sizeBytes,
-    data: att.data,
-    uploadedByUid: user?.uid || "",
-    uploadedByEmail: user?.email || "",
-    uploadedAtMillis: serverTimestamp()
+  await update(ref(db), {
+    [`handovers/${handoverKey}/documents/${docId}`]: null,
+    [`handoverDocs/${handoverKey}/${docId}`]: null
   });
-  return proofRef.key;
 }
 
-export async function loadPaymentProof(proofId) {
-  if (!proofId) return null;
-  const snap = await get(ref(db, "paymentProofs/" + proofId));
-  return snap.val();
+/** Drop every blob for a handover (called when the handover itself goes). */
+export async function removeAllHandoverDocs(handoverKey) {
+  await update(ref(db), { [`handoverDocs/${handoverKey}`]: null }).catch(() => {});
 }
 
-export async function deletePaymentProof(proofId) {
-  if (!proofId) return;
-  await fbRemove(ref(db, "paymentProofs/" + proofId)).catch(() => {});
-}
-
-/** Fetch a proof and hand it straight to the system viewer. */
-export async function viewPaymentProof(proofId) {
-  const rec = await loadPaymentProof(proofId);
-  if (!rec) { window.showSnackbar?.("Proof is no longer available"); return; }
+/** Fetch a handover document and hand it to the system viewer. */
+export async function viewHandoverDoc(handoverKey, docId) {
+  const rec = await loadHandoverDoc(handoverKey, docId);
+  if (!rec) { window.showSnackbar?.("Couldn't load document"); return; }
   openAttachment(rec);
 }
 
-/** Fetch a handover document and hand it straight to the system viewer. */
-export async function viewHandoverDoc(handoverKey, docId) {
-  const rec = await loadHandoverDoc(handoverKey, docId);
-  if (!rec) { window.showSnackbar?.("Document is no longer available"); return; }
+// ---------------- Payment proofs ----------------
+//
+// One proof per payment request, stored under the REQUEST's own key. The
+// request row carries `proofName` and nothing else - its presence is the flag
+// that a proof exists.
+
+/** Attach (or replace) the proof image for a request. */
+export async function savePaymentProof(requestKey, att) {
+  await update(ref(db), {
+    [`paymentRequests/${requestKey}/proofName`]: att.name,
+    [`paymentProofs/${requestKey}`]: {
+      name: att.name,
+      type: att.type,
+      base64: att.base64
+    }
+  });
+}
+
+/** Clear the proof image and the request's flag in one update. */
+export async function removePaymentProof(requestKey) {
+  await update(ref(db), {
+    [`paymentRequests/${requestKey}/proofName`]: "",
+    [`paymentProofs/${requestKey}`]: null
+  });
+}
+
+export async function loadPaymentProof(requestKey) {
+  if (!requestKey) return null;
+  const snap = await get(ref(db, "paymentProofs/" + requestKey));
+  return snap.val();
+}
+
+/** Fetch a proof and hand it straight to the system viewer. */
+export async function viewPaymentProof(requestKey) {
+  const rec = await loadPaymentProof(requestKey);
+  if (!rec) { window.showSnackbar?.("Couldn't load proof"); return; }
   openAttachment(rec);
 }

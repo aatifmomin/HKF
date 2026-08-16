@@ -9,11 +9,31 @@
 // downloads instead and the user attaches it themselves.
 
 // ---------------------------------------------------------------------------
-// The link printed on the card. Leave empty to use whatever origin the app is
-// being served from, which is right in almost every case. Set it explicitly if
-// you want the card to point somewhere else (a short link, a custom domain).
-export const SHARE_URL_OVERRIDE = "";
+// The link printed on the card comes from /settings/apkLink, which the owner
+// edits in Settings and which the Android client uses for the same purpose -
+// so both apps advertise one link. If that setting is empty we fall back to
+// whatever origin this app is served from, which is a better default for the
+// web than Android's "www.drive_dummy/HKF.apk" placeholder.
 // ---------------------------------------------------------------------------
+
+import {
+  getDatabase,
+  ref,
+  get
+} from "https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js";
+
+import { firebaseApp } from "./firebase-init.js";
+
+const db = getDatabase(firebaseApp);
+
+async function fetchApkLink() {
+  try {
+    const snap = await get(ref(db, "settings/apkLink"));
+    return String(snap.val() || "").trim();
+  } catch {
+    return "";
+  }
+}
 
 const W = 1080;
 const H = 1350;
@@ -24,8 +44,7 @@ const GOLD = "#C68A2E";
 const GOLD_LIGHT = "#E8C26A";
 const CREAM = "#F7F1E6";
 
-function shareUrl() {
-  if (SHARE_URL_OVERRIDE) return SHARE_URL_OVERRIDE;
+function fallbackUrl() {
   const { origin, pathname } = window.location;
   // Trim index.html so the printed link stays short and typeable.
   const path = pathname.replace(/index\.html$/i, "");
@@ -89,7 +108,7 @@ function centeredText(ctx, text, y, { font, color, letterSpacing = 0 }) {
  * Draw the card.
  * @param {{year:number, activeMembers:number, totalMembers:number, collectionMinor:number}} stats
  */
-async function drawCard(stats) {
+async function drawCard(stats, url) {
   const canvas = document.createElement("canvas");
   canvas.width = W;
   canvas.height = H;
@@ -193,9 +212,9 @@ async function drawCard(stats) {
   });
 
   // Link chip
-  const url = prettyUrl(shareUrl());
+  const shown = prettyUrl(url);
   ctx.font = "600 34px -apple-system, Segoe UI, Helvetica, sans-serif";
-  const urlW = ctx.measureText(url).width;
+  const urlW = ctx.measureText(shown).width;
   const chipW = Math.min(W - 160, urlW + 90);
   const chipX = (W - chipW) / 2;
   const chipGrad = ctx.createLinearGradient(chipX, 0, chipX + chipW, 0);
@@ -206,7 +225,7 @@ async function drawCard(stats) {
   ctx.fill();
   ctx.fillStyle = "#20130A";
   ctx.textAlign = "center";
-  ctx.fillText(url, W / 2, 1218);
+  ctx.fillText(shown, W / 2, 1218);
 
   return canvas;
 }
@@ -222,13 +241,14 @@ function canvasToBlob(canvas) {
  * @param {{year:number, activeMembers:number, totalMembers:number, collectionMinor:number}} stats
  */
 export async function shareReferralCard(stats) {
-  const canvas = await drawCard(stats);
+  const url = (await fetchApkLink()) || fallbackUrl();
+  const canvas = await drawCard(stats, url);
   const blob = await canvasToBlob(canvas);
   const fileName = `hkf-${stats.year}.png`;
   const file = new File([blob], fileName, { type: "image/png" });
-  const url = shareUrl();
-  const text = `Hasnain Karimain Foundation — ${stats.activeMembers || 0} active members, ` +
-    `${formatRupees(stats.collectionMinor || 0)} collected in ${stats.year}. ${url}`;
+  // Same copy Android puts in the share intent, so a forwarded message reads
+  // identically whichever app it came from.
+  const text = `Join the Hasnain Karimain Foundation! Download the app: ${url}`;
 
   // Feature-detect the file share before calling it: Android Chrome supports
   // it, iOS Safari supports it, most desktops don't, and calling share() with

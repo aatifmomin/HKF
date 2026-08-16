@@ -29,8 +29,7 @@ function rupeesNumeric(minor) {
 
 const PROFILE_HEADERS = [
   "Member ID",
-  "Full name",
-  "Display name",
+  "Name",
   "Email",
   "Contact number",
   "Occupation",
@@ -43,7 +42,6 @@ const PROFILE_HEADERS = [
 function profileCells(m) {
   return [
     m.memberId || "",
-    m.fullName || "",
     m.displayName || "",
     m.email || "",
     m.contactNumber || "",
@@ -58,8 +56,7 @@ function profileCells(m) {
 /** Column widths so the sheet is readable without the user dragging borders. */
 const COL_WIDTHS = [
   { wch: 10 },  // Member ID
-  { wch: 24 },  // Full name
-  { wch: 18 },  // Display name
+  { wch: 24 },  // Name
   { wch: 28 },  // Email
   { wch: 16 },  // Contact
   { wch: 18 },  // Occupation

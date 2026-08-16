@@ -1864,3 +1864,190 @@ input, textarea, select {
   .share-section { flex-direction: column; align-items: stretch; }
   .share-btn { justify-content: center; }
 }
+
+/* ============================================================
+   Top bar: settings gear (owner, admin role only)
+   ============================================================ */
+
+.top-bar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.gear-pill {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1px solid rgba(154,106,31,0.30);
+  background: var(--surface);
+  color: var(--gold-dark);
+  font-size: 16px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.gear-pill:hover { background: rgba(154,106,31,0.08); }
+
+.back-link {
+  display: inline-block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--gold-dark);
+  padding: 6px 0;
+  margin-bottom: 2px;
+}
+.back-link:hover { text-decoration: underline; }
+
+/* ============================================================
+   Activity: relative time + owner delete
+   ============================================================ */
+
+.activity-top-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.activity-when {
+  font-size: 11px;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+.activity-delete {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--red-fg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+.activity-delete:hover { background: var(--red-bg); }
+
+/* ============================================================
+   Settings
+   ============================================================ */
+
+.settings-section {
+  background: var(--surface);
+  border: 1px solid rgba(154,106,31,0.12);
+  border-radius: var(--radius-l);
+  padding: 14px 16px;
+  margin-bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-shadow: var(--shadow-s);
+}
+.settings-section.danger { border-color: #E0B4B4; }
+.settings-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.settings-help {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+.settings-save { align-self: flex-start; }
+
+/* ============================================================
+   Reminder tab + the member-facing reminder banner
+   ============================================================ */
+
+.reminder-banner,
+.reminder-info {
+  background: #F8EED7;
+  border: 1px solid rgba(198,138,46,0.35);
+  border-radius: var(--radius-l);
+  padding: 12px 14px;
+  margin-bottom: 12px;
+}
+.reminder-banner-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--gold-deep);
+  margin-bottom: 4px;
+}
+.reminder-banner-text {
+  font-size: 13px;
+  line-height: 1.5;
+  color: #4A3208;
+}
+.reminder-info-line {
+  font-size: 12px;
+  line-height: 1.5;
+  color: #4A3208;
+}
+.reminder-info-msg {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--gold-deep);
+  margin-top: 6px;
+  font-style: italic;
+}
+
+/* The primary action is an <a href="sms:...">, so it needs the button look
+   applied to a link rather than a <button>. */
+.reminder-cta {
+  display: block;
+  width: 100%;
+  text-align: center;
+  text-decoration: none;
+  background: linear-gradient(135deg, var(--gold), var(--gold-dark));
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 13px 16px;
+  border-radius: 999px;
+  box-shadow: var(--shadow-s);
+  border: none;
+}
+.reminder-cta:hover { filter: brightness(1.06); }
+.reminder-cta.muted {
+  background: #BDB4A3;
+  box-shadow: none;
+}
+.reminder-cta:disabled {
+  background: var(--grey-bg);
+  color: var(--text-3);
+  cursor: not-allowed;
+  box-shadow: none;
+}
+.reminder-subnote {
+  font-size: 11px;
+  color: var(--text-3);
+  text-align: center;
+  margin-top: 6px;
+}
+.reminder-tools {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+.reminder-warning {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--amber-fg);
+  background: var(--amber-bg);
+  border-radius: var(--radius-m);
+  padding: 10px 12px;
+  margin-top: 12px;
+}
+
+/* The per-row Remind control is a link too. */
+a.row-btn {
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+}
