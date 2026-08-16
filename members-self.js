@@ -1,286 +1,167 @@
-// Membership resolution for the signed-in user.
+// Membership gate. Replaces the old auto-join with the same approval flow as
+// Android: existing members and admin-pre-registered emails pass through;
+// brand-new sign-ins write /joinRequests/{uid} and wait on a full-screen
+// overlay until an admin approves (live — no re-login needed).
 //
-// Signing in no longer creates a member. A brand-new Google account lands in
-// a queue instead:
-//
-//   1. /members/{uid} already exists          -> they're in, refresh name/email
-//   2. an admin pre-registered their email    -> claim that row (with any
-//      payments already recorded against it) and they're in immediately
-//   3. otherwise                              -> /joinRequests/{uid} = pending,
-//      they see the "Pending approval to join" screen until an admin decides
-//
-// The pre-registration path deliberately skips the queue: an admin who typed
-// the email into Add Member has already approved that person, and making them
-// approve again once the person signs in would be busywork.
+// Drop-in: exports the same ensureMemberExists(user) that app.js already
+// awaits. The promise now resolves only once the user is APPROVED; while
+// waiting, this module renders its own blocking overlay.
 
 import {
-  getDatabase,
-  ref,
-  get,
-  set,
-  update,
-  onValue,
-  remove as fbRemove,
-  serverTimestamp,
-  runTransaction
+  getDatabase, ref, get, set, update, remove, onValue,
+  serverTimestamp, runTransaction
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js";
-
 import { firebaseApp } from "./firebase-init.js";
 
 const db = getDatabase(firebaseApp);
 
-export const MEMBERSHIP_MEMBER = "member";
-export const MEMBERSHIP_PENDING = "pending";
-export const MEMBERSHIP_DECLINED = "declined";
-
-/**
- * Work out where the signed-in user stands, creating a join request if this
- * is their first ever sign-in. Safe to call on every auth state change.
- */
-export async function resolveMembership(user) {
-  if (!user || !user.uid) return { status: MEMBERSHIP_PENDING };
-
-  const memberRef = ref(db, "members/" + user.uid);
-  const snap = await get(memberRef);
-
-  if (snap.exists()) {
-    await refreshMemberIdentity(memberRef, snap.val() || {}, user);
-    return { status: MEMBERSHIP_MEMBER };
-  }
-
-  // Pre-registered by an admin? Claim the row rather than queueing.
-  const claimed = await tryClaimPreRegisteredRow(user);
-  if (claimed) {
-    // Any join request they'd previously filed is now moot.
-    await fbRemove(ref(db, "joinRequests/" + user.uid)).catch(() => {});
-    return { status: MEMBERSHIP_MEMBER };
-  }
-
-  const reqRef = ref(db, "joinRequests/" + user.uid);
-  const reqSnap = await get(reqRef);
-  const existing = reqSnap.val();
-
-  if (existing) {
-    if (existing.status === "approved") {
-      // Approved, but the member row is gone - they were removed after being
-      // let in. Reopen the request so an admin can decide again instead of
-      // leaving them staring at a screen nobody can action.
-      await set(reqRef, buildJoinRequest(user));
-      return { status: MEMBERSHIP_PENDING };
-    }
-    const status = existing.status === "declined" ? MEMBERSHIP_DECLINED : MEMBERSHIP_PENDING;
-    return { status, request: { key: user.uid, ...existing } };
-  }
-
-  await set(reqRef, buildJoinRequest(user));
-  return { status: MEMBERSHIP_PENDING };
-}
-
-function buildJoinRequest(user) {
-  return {
-    uid: user.uid,
-    displayName: (user.displayName || "").trim(),
-    email: user.email || "",
-    emailLower: (user.email || "").toLowerCase(),
-    photoUrl: user.photoURL || "",
-    status: "pending",
-    createdAtMillis: Date.now(),
-    decidedByEmail: "",
-    decidedByName: "",
-    decidedAtMillis: 0
-  };
-}
-
-async function refreshMemberIdentity(memberRef, cur, user) {
-  const updates = {};
-  const dn = (user.displayName || "").trim();
-  if (dn && cur.displayName !== dn) updates.displayName = dn;
-  if (cur.email !== (user.email || "")) updates.email = user.email || "";
-  if (!cur.emailLower && user.email) updates.emailLower = user.email.toLowerCase();
-  // A claimed row keeps `pending: true` from the Add Member dialog until the
-  // person actually signs in; clear it now that they have.
-  if (cur.pending === true) updates.pending = false;
-  if (Object.keys(updates).length > 0) {
-    try { await update(memberRef, updates); } catch (e) { console.warn("member refresh failed", e); }
-  }
-}
-
-/**
- * Look for a member row an admin created ahead of time for this email, keyed
- * by a push id rather than the user's uid. If one exists, move it (and any
- * payments recorded against it) to /members/{uid} so the person walks into a
- * populated account.
- */
-async function tryClaimPreRegisteredRow(user) {
+export async function ensureMemberExists(user) {
+  const uid = user.uid;
   const email = (user.email || "").toLowerCase();
-  if (!email) return false;
+  const name = user.displayName || "";
 
-  let all;
-  try {
-    all = await get(ref(db, "members"));
-  } catch (e) {
-    // A locked-down rule set can refuse the directory read to a non-member.
-    // That's fine - they just go through the normal approval queue.
-    console.warn("pre-registration lookup skipped", e);
-    return false;
+  // 1. Already a member -> sync name/email, done.
+  const meSnap = await get(ref(db, "members/" + uid));
+  if (meSnap.exists()) {
+    const cur = meSnap.val() || {};
+    const patch = {};
+    if (name && cur.displayName !== name) patch.displayName = name;
+    if (email && cur.email !== email) { patch.email = email; patch.emailLower = email; }
+    if (Object.keys(patch).length) await update(ref(db, "members/" + uid), patch);
+    return;
   }
 
-  const match = Object.entries(all.val() || {}).find(([key, rec]) => {
-    if (key === user.uid) return false;
-    const rowEmail = (rec?.emailLower || rec?.email || "").toLowerCase();
-    return rowEmail && rowEmail === email;
-  });
-  if (!match) return false;
-
-  const [oldKey, rec] = match;
-
-  try {
-    // Carry the row over, keeping the admin-assigned member id and role.
-    await set(ref(db, "members/" + user.uid), {
-      ...rec,
-      displayName: (user.displayName || "").trim() || rec.displayName || "",
-      email: user.email || rec.email || "",
-      emailLower: email,
-      pending: false,
-      claimedFromKey: oldKey,
-      claimedAtMillis: Date.now()
+  // 2. Admin pre-registered this email as a pending_ row -> claim it
+  //    (keeps member ID, role, profile, payments).
+  if (email) {
+    const all = await get(ref(db, "members"));
+    let claimedKey = null, claimedRec = null;
+    all.forEach(child => {
+      const k = child.key || "";
+      const v = child.val() || {};
+      if (!claimedKey && k.indexOf("pending_") === 0 &&
+          String(v.email || "").toLowerCase() === email) {
+        claimedKey = k; claimedRec = v;
+      }
     });
-
-    // Payments the admin already recorded against the placeholder row.
-    const paySnap = await get(ref(db, "payments/" + oldKey));
-    const payments = paySnap.val();
-    if (payments) {
-      await update(ref(db, "payments/" + user.uid), payments);
-      await fbRemove(ref(db, "payments/" + oldKey)).catch(() => {});
-    }
-
-    await fbRemove(ref(db, "members/" + oldKey)).catch(() => {});
-    return true;
-  } catch (e) {
-    console.warn("claim failed", e);
-    return false;
-  }
-}
-
-/**
- * Live membership status. Fires whenever /members/{uid} or /joinRequests/{uid}
- * changes, which is what lets an approved user drop straight into the app
- * without signing out and back in.
- */
-export function observeMembership(user, callback) {
-  if (!user || !user.uid) return () => {};
-
-  let hasMember = false;
-  let request = null;
-  let sawMember = false;
-  let sawRequest = false;
-
-  function emit() {
-    if (!sawMember || !sawRequest) return;   // wait for both first snapshots
-    if (hasMember) { callback({ status: MEMBERSHIP_MEMBER }); return; }
-    if (request && request.status === "declined") {
-      callback({ status: MEMBERSHIP_DECLINED, request });
+    if (claimedKey) {
+      const rec = Object.assign({}, claimedRec, {
+        displayName: claimedRec.displayName || name,
+        email, emailLower: email
+      });
+      await set(ref(db, "members/" + uid), rec);
+      const pays = await get(ref(db, "payments/" + claimedKey));
+      if (pays.exists()) {
+        const moves = {};
+        pays.forEach(p => { moves[p.key] = p.val(); });
+        await update(ref(db, "payments/" + uid), moves);
+        await remove(ref(db, "payments/" + claimedKey));
+      }
+      await remove(ref(db, "members/" + claimedKey));
       return;
     }
-    callback({ status: MEMBERSHIP_PENDING, request });
   }
 
-  const unsubMember = onValue(ref(db, "members/" + user.uid), snap => {
-    hasMember = snap.exists();
-    sawMember = true;
-    emit();
-  }, () => { sawMember = true; emit(); });
-
-  const unsubRequest = onValue(ref(db, "joinRequests/" + user.uid), snap => {
-    const val = snap.val();
-    request = val ? { key: user.uid, ...val } : null;
-    sawRequest = true;
-    emit();
-  }, () => { sawRequest = true; emit(); });
-
-  return function () {
-    unsubMember();
-    unsubRequest();
-  };
-}
-
-/** Re-open a declined request ("Request again" on the declined screen). */
-export async function requestJoinAgain(user) {
-  await set(ref(db, "joinRequests/" + user.uid), {
-    ...buildJoinRequest(user),
-    reRequestedAtMillis: Date.now()
-  });
-}
-
-// ---------------- Admin-side decisions ----------------
-
-/**
- * Approve a join request: allocate a member id, create /members/{uid}, and
- * stamp the request as approved (kept, not deleted, so the Activity feed can
- * still show who let them in).
- */
-export async function approveJoinRequest(request, approver) {
-  const uid = request.uid || request.key;
-  if (!uid) throw new Error("Join request has no user id");
-
-  const existing = await get(ref(db, "members/" + uid));
-  if (!existing.exists()) {
-    const memberId = await allocateNextMemberId();
-    await set(ref(db, "members/" + uid), {
-      memberId,
-      displayName: request.displayName || (request.email || "").split("@")[0] || "",
-      fullName: "",
-      email: request.email || "",
-      emailLower: (request.email || "").toLowerCase(),
-      contactNumber: "",
-      currentAddress: "",
-      permanentAddress: "",
-      occupation: "",
-      role: "Member",
-      joinedAtMillis: Date.now(),
-      totalPaidMinor: 0,
-      pending: false
+  // 3. Admin email -> auto-create (approvers can never lock themselves out).
+  if (email) {
+    const admins = await get(ref(db, "admins"));
+    let isAdmin = false;
+    admins.forEach(a => {
+      if (String((a.val() || {}).email || "").toLowerCase() === email) isAdmin = true;
     });
+    if (isAdmin) { await createMemberRow(uid, email, name); return; }
   }
 
-  await update(ref(db, "joinRequests/" + uid), {
-    status: "approved",
-    decidedByEmail: approver?.email || "",
-    decidedByName: approver?.displayName || (approver?.email || "").split("@")[0] || "",
-    decidedAtMillis: serverTimestamp()
+  // 4. Brand-new: submit a join request and block on the overlay until an
+  //    admin approves. Denied shows a request-again option.
+  await submitJoin(uid, email, name);
+  await waitForApproval(uid, email, name);
+}
+
+async function submitJoin(uid, email, name) {
+  const cur = await get(ref(db, "joinRequests/" + uid));
+  const status = cur.exists() ? (cur.val() || {}).status : null;
+  if (cur.exists() && status !== "denied") return;
+  await set(ref(db, "joinRequests/" + uid), {
+    email, displayName: name,
+    requestedAtMillis: serverTimestamp(),
+    status: "pending",
+    decidedByEmail: "", decidedByName: "", decidedAtMillis: 0
   });
 }
 
-/** Discard a join request. The person sees the declined screen next paint. */
-export async function declineJoinRequest(request, approver) {
-  const uid = request.uid || request.key;
-  if (!uid) throw new Error("Join request has no user id");
-  await update(ref(db, "joinRequests/" + uid), {
-    status: "declined",
-    decidedByEmail: approver?.email || "",
-    decidedByName: approver?.displayName || (approver?.email || "").split("@")[0] || "",
-    decidedAtMillis: serverTimestamp()
+function waitForApproval(uid, email, name) {
+  return new Promise(resolve => {
+    const overlay = buildOverlay();
+    document.body.appendChild(overlay.root);
+
+    const unsubMember = onValue(ref(db, "members/" + uid), s => {
+      if (s.exists()) finish();
+    });
+    const unsubJoin = onValue(ref(db, "joinRequests/" + uid), s => {
+      const st = s.exists() ? (s.val() || {}).status : null;
+      if (st === "approved") { finish(); return; }
+      if (st === null) { submitJoin(uid, email, name); return; } // owner deleted it
+      overlay.setDenied(st === "denied", () => {
+        set(ref(db, "joinRequests/" + uid), {
+          email, displayName: name,
+          requestedAtMillis: serverTimestamp(),
+          status: "pending",
+          decidedByEmail: "", decidedByName: "", decidedAtMillis: 0
+        });
+      });
+    });
+
+    function finish() {
+      try { unsubMember(); } catch (e) {}
+      try { unsubJoin(); } catch (e) {}
+      overlay.root.remove();
+      resolve();
+    }
   });
 }
 
-// ---------------- Member id allocation ----------------
-
-// Atomic counter increment via runTransaction. Two clients approving at the
-// same time get unique IDs, no race.
-export async function allocateNextMemberId() {
+async function createMemberRow(uid, email, name) {
   const counterRef = ref(db, "membersCounter");
-  let next = 1;
-  await runTransaction(counterRef, current => {
-    next = (current || 0) + 1;
-    return next;
+  const tx = await runTransaction(counterRef, cur => (cur || 0) + 1);
+  const num = tx.snapshot.val() || 1;
+  const memberId = "M-" + String(num).padStart(3, "0");
+  await set(ref(db, "members/" + uid), {
+    memberId, displayName: name, email, emailLower: email,
+    role: "Member", joinedAtMillis: serverTimestamp(), totalPaidMinor: 0,
+    contactNumber: "", currentAddress: "", permanentAddress: "", occupation: ""
   });
-  return "M" + String(next).padStart(3, "0");
 }
 
-// Read-only peek at the next ID (used by the Add Member dialog's auto-generate).
-export async function peekNextMemberId() {
-  const counterRef = ref(db, "membersCounter");
-  const snap = await get(counterRef);
-  const cur = (snap.val() || 0);
-  return "M" + String(cur + 1).padStart(3, "0");
+function buildOverlay() {
+  const root = document.createElement("div");
+  root.style.cssText =
+    "position:fixed;inset:0;z-index:9999;background:#FAF7F2;display:flex;" +
+    "align-items:center;justify-content:center;text-align:center;padding:24px;";
+  root.innerHTML =
+    '<div style="max-width:340px;font-family:inherit;">' +
+    '<div id="hkf-gate-spin" style="width:40px;height:40px;margin:0 auto 18px;' +
+    'border:3px solid #E8C26A;border-top-color:#9A6A1F;border-radius:50%;' +
+    'animation:hkfspin 0.9s linear infinite;"></div>' +
+    '<style>@keyframes hkfspin{to{transform:rotate(360deg)}}</style>' +
+    '<div id="hkf-gate-title" style="font-size:19px;font-weight:700;color:#111;">' +
+    'Pending approval to join</div>' +
+    '<div id="hkf-gate-sub" style="font-size:13px;color:#4A4A4A;margin-top:8px;">' +
+    'An admin has been notified. You\'ll be let in automatically once approved.</div>' +
+    '<button id="hkf-gate-again" style="display:none;margin-top:16px;padding:10px 20px;' +
+    'border:none;border-radius:999px;background:#9A6A1F;color:#fff;font-weight:600;' +
+    'cursor:pointer;">Request again</button>' +
+    '</div>';
+  const setDenied = (denied, onAgain) => {
+    root.querySelector("#hkf-gate-spin").style.display = denied ? "none" : "";
+    root.querySelector("#hkf-gate-title").textContent =
+      denied ? "Request declined" : "Pending approval to join";
+    root.querySelector("#hkf-gate-sub").textContent = denied
+      ? "An admin declined your request. You can ask again."
+      : "An admin has been notified. You'll be let in automatically once approved.";
+    const btn = root.querySelector("#hkf-gate-again");
+    btn.style.display = denied ? "" : "none";
+    btn.onclick = onAgain;
+  };
+  return { root, setDenied };
 }
