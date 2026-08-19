@@ -397,6 +397,33 @@ export async function loadPaymentProof(requestKey) {
   return snap.val();
 }
 
+// ---------------- Payment QR (owner-uploaded, shown to members) ----------------
+//
+// /settings/paymentQr = { name, base64 }
+//
+// Kept out of the live /settings listener on purpose: every member's client
+// subscribes to /settings for the reminder text, and an inline image would be
+// re-downloaded on every unrelated settings change. The observer only checks
+// whether `name` is set; the blob is fetched on demand.
+
+export async function savePaymentQr(att) {
+  await update(ref(db, "settings/paymentQr"), {
+    name: att.name,
+    base64: att.base64
+  });
+}
+
+export async function removePaymentQr() {
+  await update(ref(db, "settings"), { paymentQr: null });
+}
+
+/** One-shot blob fetch. Returns { name, base64 } or null. */
+export async function loadPaymentQr() {
+  const snap = await get(ref(db, "settings/paymentQr"));
+  const v = snap.val();
+  return v && v.base64 ? v : null;
+}
+
 /** Fetch a proof and hand it straight to the system viewer. */
 export async function viewPaymentProof(requestKey) {
   const rec = await loadPaymentProof(requestKey);

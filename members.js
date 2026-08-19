@@ -33,6 +33,7 @@ import {
 import { firebaseApp } from "./firebase-init.js";
 import { peekNextMemberId, newPendingMemberKey, recalcMemberTotal } from "./members-self.js";
 import { getSelectedYear, onYearChange } from "./year-state.js";
+import { viewPaymentProof } from "./attachments.js";
 
 const db = getDatabase(firebaseApp);
 
@@ -115,99 +116,21 @@ export function memberDisplayName(m) {
 }
 
 export function renderMembers(container) {
-  const isAdmin = window.__viewerIsAdmin === true;
-  return isAdmin ? renderAdminDirectory(container) : renderSelfView(container);
-}
-
-// ================= Member view: only their own card =================
-
-function renderSelfView(container) {
-  const user = window.__currentUser;
-  if (!user) {
-    container.innerHTML = `<div class="placeholder">Sign in required.</div>`;
+  // A member's own record now lives on the Profile tab (profile.js), where it
+  // is editable. This screen is the admin directory only.
+  if (window.__viewerIsAdmin !== true) {
+    container.innerHTML = `
+      <div class="placeholder">
+        <strong>Admins only</strong>
+        Your own record is on the Profile tab.
+      </div>`;
     return () => {};
   }
-
-  container.innerHTML = `
-    <div class="page-header">
-      <div>
-        <div class="page-title">My membership</div>
-        <div class="page-subtitle">Your foundation record</div>
-      </div>
-    </div>
-    <div id="self-card">
-      <div class="loading"><div class="spinner"></div>Loading...</div>
-    </div>
-  `;
-
-  const cardEl = container.querySelector("#self-card");
-  let member = null;
-  let payments = [];
-
-  const unsubMember = onValue(ref(db, "members/" + user.uid), snap => {
-    member = snap.exists() ? { uid: user.uid, ...snap.val() } : null;
-    rerender();
-  });
-  const unsubPayments = onValue(ref(db, "payments/" + user.uid), snap => {
-    payments = Object.entries(snap.val() || {}).map(([k, p]) => ({ key: k, ...p }));
-    rerender();
-  });
-
-  function rerender() {
-    if (!member) {
-      cardEl.innerHTML = `<div class="empty-state">Your member record isn't set up yet.</div>`;
-      return;
-    }
-    const year = getSelectedYear();
-    const status = statusFor(payments, year);
-    const yearTotal = payments
-      .filter(p => (p.coversMonthKey || "").startsWith(String(year) + "-"))
-      .reduce((s, p) => s + (p.amountMinor || 0), 0);
-
-    cardEl.innerHTML = `
-      <div class="self-card">
-        <div class="self-card-head">
-          <div class="self-avatar">${escapeHtml(member.memberId || "?")}</div>
-          <div class="self-head-text">
-            <div class="self-name">${escapeHtml(memberDisplayName(member))}</div>
-            <div class="self-pills">
-              <span class="pill pill-gold pill-tiny">${escapeHtml(member.role || "Member")}</span>
-              <span class="pill ${status.cls} pill-tiny">${escapeHtml(status.label)}</span>
-            </div>
-          </div>
-        </div>
-
-        <div class="self-totals">
-          <div class="self-total-cell">
-            <div class="self-total-label">Paid in ${year}</div>
-            <div class="self-total-value">${formatRupees(yearTotal)}</div>
-          </div>
-          <div class="self-total-cell">
-            <div class="self-total-label">All-time</div>
-            <div class="self-total-value">${formatRupees(member.totalPaidMinor || 0)}</div>
-          </div>
-        </div>
-
-        ${renderProfileFields(member)}
-      </div>
-      <div class="self-hint">
-        Something out of date? Ask an admin to update your profile.
-      </div>
-    `;
-    wireCopyTargets(cardEl);
-  }
-
-  const unsubYear = onYearChange(() => rerender());
-
-  return function teardown() {
-    unsubMember();
-    unsubPayments();
-    unsubYear();
-  };
+  return renderAdminDirectory(container);
 }
 
 /**
- * Profile block shared by the member self-view and the admin profile dialog.
+ * Profile block used by the admin's read-only "View profile" dialog.
  * Addresses and the contact number are tap-to-copy - the permanent address in
  * particular gets pasted into forms constantly, and retyping it off a phone
  * screen is how typos get into paperwork.
@@ -871,7 +794,24 @@ async function openPaymentsDialog(member) {
   dialog.addEventListener("click", e => { if (e.target === dialog) close(); });
 
   try {
-    const snap = await get(ref(db, "payments/" + member.uid));
+    const [snap, reqSnap] = await Promise.all([
+      get(ref(db, "payments/" + member.uid)),
+      get(ref(db, "paymentRequests"))
+    ]);
+
+    // Map every payment row an approval created back to its request, so the
+    // sheet can show who approved it and surface the member's proof image.
+    // approvedPaymentKey is comma-separated for a multi-month approval, and
+    // every one of those rows resolves to the same parent request.
+    const requestByPaymentKey = {};
+    Object.entries(reqSnap.val() || {}).forEach(([key, r]) => {
+      if (r?.memberUid !== member.uid || !r?.approvedPaymentKey) return;
+      String(r.approvedPaymentKey).split(",").forEach(pk => {
+        const trimmed = pk.trim();
+        if (trimmed) requestByPaymentKey[trimmed] = { key, ...r };
+      });
+    });
+
     const payments = Object.entries(snap.val() || {})
       .map(([k, p]) => ({ key: k, ...p }))
       .sort((a, b) => (a.coversMonthKey || "").localeCompare(b.coversMonthKey || ""));
@@ -889,12 +829,21 @@ async function openPaymentsDialog(member) {
         ${payments.map(p => {
           const [y, m] = (p.coversMonthKey || "-").split("-");
           const monthText = m ? MONTH_LABELS[parseInt(m,10)-1] + " " + y : "-";
+          const req = requestByPaymentKey[p.key];
+          const by = req ? (req.decidedByName || (req.decidedByEmail || "").split("@")[0]) : "";
           return `
-            <div class="history-row">
+            <div class="history-row ${req && req.proofName ? "has-proof" : ""}">
               <div class="history-row-circle on">${monthText.charAt(0)}</div>
               <div class="history-row-body">
                 <div class="history-row-title">${escapeHtml(monthText)}</div>
                 <div class="history-row-sub">${escapeHtml(p.category || "")}${p.note ? " - " + escapeHtml(p.note) : ""}</div>
+                ${by ? `<div class="history-row-by">Approved by ${escapeHtml(by)}</div>` : ""}
+                ${req && req.proofName ? `
+                  <div class="proof-strip">
+                    <span class="proof-tag">PROOF</span>
+                    <span class="proof-name">${escapeHtml(req.proofName)}</span>
+                    <button class="doc-btn" data-proof-view="${escapeHtml(req.key)}">View proof</button>
+                  </div>` : ""}
               </div>
               <div class="history-row-amount">${formatRupees(p.amountMinor || 0)}</div>
             </div>
@@ -902,6 +851,14 @@ async function openPaymentsDialog(member) {
         }).join("")}
       </div>
     `;
+
+    body.querySelectorAll("[data-proof-view]").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        btn.disabled = true;
+        try { await viewPaymentProof(btn.dataset.proofView); }
+        finally { btn.disabled = false; }
+      });
+    });
   } catch (e) {
     dialog.querySelector("#vp-body").innerHTML = `<div class="empty-state">Couldn't load: ${escapeHtml(e.message || "")}</div>`;
   }
@@ -909,16 +866,46 @@ async function openPaymentsDialog(member) {
 
 // ---------------- Remove member ----------------
 
+/**
+ * Remove a member and everything that belongs to them, in one atomic write:
+ * the member row, their payments, their join application, and every payment
+ * request they ever filed together with its proof image.
+ *
+ * The join request has to go or the person is stuck forever: their old row
+ * still reads "approved" while the member row it created is gone. The
+ * requests have to go because an orphaned request in the Activity feed points
+ * at a member who no longer exists.
+ */
 async function confirmRemoveMember(member) {
-  const ok = confirm("Remove " + memberDisplayName(member) + "? Their /payments rows will also be deleted. This cannot be undone.");
+  const ok = confirm(
+    "Remove " + memberDisplayName(member) + "?\n\n" +
+    "This permanently deletes the member with all their payment records, " +
+    "payment requests, proof images, and join application — everything, from " +
+    "the database. This cannot be undone."
+  );
   if (!ok) return;
+
+  const updates = {
+    ["members/" + member.uid]: null,
+    ["payments/" + member.uid]: null,
+    ["joinRequests/" + member.uid]: null
+  };
+
+  // Best-effort scan: if this read fails the core delete still goes ahead.
   try {
-    await fbRemove(ref(db, "members/" + member.uid));
-    await fbRemove(ref(db, "payments/" + member.uid)).catch(() => {});
-    // Clear any stale join request too, otherwise the person is stuck on the
-    // pending screen forever: their old request still reads "approved" while
-    // the member row it created is gone.
-    await fbRemove(ref(db, "joinRequests/" + member.uid)).catch(() => {});
+    const reqSnap = await get(ref(db, "paymentRequests"));
+    Object.entries(reqSnap.val() || {}).forEach(([key, r]) => {
+      if (r?.memberUid === member.uid) {
+        updates["paymentRequests/" + key] = null;
+        updates["paymentProofs/" + key] = null;
+      }
+    });
+  } catch (e) {
+    console.warn("request scan skipped", e);
+  }
+
+  try {
+    await update(ref(db), updates);
     window.showSnackbar?.("Member removed");
   } catch (e) {
     window.showSnackbar?.("Couldn't remove: " + (e.message || "error"));

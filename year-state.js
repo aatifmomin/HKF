@@ -1,20 +1,25 @@
 // Selected-year state for the global year filter.
 //
 // Defaults to the current calendar year on every page load (no persistence).
-// Stage 1 of the year-filter rollout: only home.js reads this. In the next
-// stage, Payments / Members / Handover will also subscribe.
+//
+// The year list is DYNAMIC, matching Android's YearState: it starts at
+// 2026-2030 and grows to include any year the data actually mentions. Back-fill
+// a member's 2025 payments and 2025 appears in the picker on its own, on both
+// clients. Data layers call ensureYears() with the years they see in
+// coversMonthKey values.
 
-const SUPPORTED_YEARS = [2026, 2027, 2028, 2029, 2030];
+const BASE_YEARS = [2026, 2027, 2028, 2029, 2030];
 
+let years = [...BASE_YEARS];
 let selectedYear = clampToSupported(new Date().getFullYear());
 const subscribers = new Set();
+const yearListSubscribers = new Set();
 
 function clampToSupported(year) {
-  if (SUPPORTED_YEARS.includes(year)) return year;
-  // Today is < 2026 -> snap to 2026 (earliest supported)
-  // Today is > 2030 -> snap to 2030 (latest supported)
-  if (year < SUPPORTED_YEARS[0]) return SUPPORTED_YEARS[0];
-  return SUPPORTED_YEARS[SUPPORTED_YEARS.length - 1];
+  if (years.includes(year)) return year;
+  // Before the earliest known year -> snap to it; after the latest -> snap to that.
+  if (year < years[0]) return years[0];
+  return years[years.length - 1];
 }
 
 export function getSelectedYear() {
@@ -22,7 +27,38 @@ export function getSelectedYear() {
 }
 
 export function getSupportedYears() {
-  return [...SUPPORTED_YEARS];
+  return [...years];
+}
+
+/**
+ * Merge years discovered in real data into the picker.
+ * @param {Iterable<number>} seen years parsed from month keys
+ */
+export function ensureYears(seen) {
+  const valid = [...seen].filter(y => Number.isInteger(y) && y >= 1990 && y <= 2099);
+  if (valid.length === 0) return;
+  const merged = [...new Set([...years, ...valid])].sort((a, b) => a - b);
+  if (merged.length === years.length && merged.every((y, i) => y === years[i])) return;
+  years = merged;
+  yearListSubscribers.forEach(fn => {
+    try { fn(getSupportedYears()); } catch (e) { console.warn("year-list subscriber error", e); }
+  });
+}
+
+/** Parse the year out of a batch of "YYYY-MM" keys and register them. */
+export function ensureYearsFromMonthKeys(monthKeys) {
+  const seen = new Set();
+  for (const k of monthKeys) {
+    const y = parseInt(String(k || "").split("-")[0], 10);
+    if (!Number.isNaN(y)) seen.add(y);
+  }
+  ensureYears(seen);
+}
+
+/** Subscribe to changes in the available-years list. Returns an unsubscribe. */
+export function onYearListChange(callback) {
+  yearListSubscribers.add(callback);
+  return () => yearListSubscribers.delete(callback);
 }
 
 export function setSelectedYear(year) {
@@ -47,4 +83,24 @@ export function onYearChange(callback) {
 /** Convenience: build the chart start month key like "2026-01" for the current year. */
 export function chartStartForYear(year = selectedYear) {
   return year + "-01";
+}
+
+/**
+ * N consecutive month keys starting at `start`, walking the calendar so year
+ * boundaries are handled ("2026-11", 3) -> ["2026-11","2026-12","2027-01"].
+ * Mirrors Android's MonthKey.nextN, including its behaviour on a malformed
+ * start key: return it alone rather than inventing a range.
+ */
+export function nextNMonths(start, count) {
+  const m = /^(\d{4})-(\d{2})$/.exec(String(start || ""));
+  if (!m) return [String(start || "")];
+  const year = parseInt(m[1], 10);
+  const month = parseInt(m[2], 10);
+  if (month < 1 || month > 12) return [String(start)];
+  const out = [];
+  for (let i = 0; i < Math.max(1, count); i++) {
+    const total = year * 12 + (month - 1) + i;
+    out.push(Math.floor(total / 12) + "-" + String((total % 12) + 1).padStart(2, "0"));
+  }
+  return out;
 }

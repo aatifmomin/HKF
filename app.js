@@ -25,6 +25,7 @@ import { renderActivity } from "./activity.js";
 import { renderHandover } from "./handover.js";
 import { renderPayments } from "./payments.js";
 import { renderMembers } from "./members.js";
+import { renderProfile } from "./profile.js";
 import { renderReminder } from "./reminder.js";
 import { renderSettings } from "./settings.js";
 
@@ -40,10 +41,12 @@ const ADMIN_TABS = [
   { id: "activity", label: "Activity" },
   { id: "reminder", label: "Reminder" }
 ];
+// The member's third tab is their own record, so it's labelled Profile - the
+// id stays "members" to match Android's unchanged route.
 const MEMBER_TABS = [
   { id: "home",     label: "Home"     },
   { id: "payments", label: "Payments" },
-  { id: "members",  label: "Members"  }
+  { id: "members",  label: "Profile"  }
 ];
 
 let role = null;            // "admin" | "member" | null
@@ -397,7 +400,11 @@ function renderTab(tab) {
 
   switch (tab) {
     case "home":     activeTeardown = renderHome(anim); break;
-    case "members":  activeTeardown = renderMembers(anim); break;
+    case "members":
+      // Same tab id, two different screens: admins get the directory, a member
+      // gets their own editable profile.
+      activeTeardown = (role === "admin") ? renderMembers(anim) : renderProfile(anim);
+      break;
     case "handover": activeTeardown = renderHandover(anim); break;
     case "activity": activeTeardown = renderActivity(anim); break;
     case "reminder": activeTeardown = renderReminder(anim); break;

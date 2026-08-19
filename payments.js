@@ -24,7 +24,13 @@ import {
 
 import { firebaseApp } from "./firebase-init.js";
 import { displayNameFor } from "./auth.js";
-import { getSelectedYear, onYearChange, chartStartForYear } from "./year-state.js";
+import {
+  getSelectedYear,
+  onYearChange,
+  chartStartForYear,
+  ensureYearsFromMonthKeys,
+  nextNMonths
+} from "./year-state.js";
 import {
   pickFiles,
   prepareAttachment,
@@ -130,6 +136,8 @@ export function renderPayments(container) {
   const unsubPayments = onValue(ref(db, "payments/" + user.uid), snap => {
     const val = snap.val() || {};
     payments = Object.entries(val).map(([k, p]) => ({ key: k, ...p }));
+    // A backfilled 2025 payment should make 2025 selectable, on both clients.
+    ensureYearsFromMonthKeys(payments.map(p => p.coversMonthKey));
     rerender();
   });
 
@@ -216,13 +224,18 @@ export function renderPayments(container) {
 
     // An approved request keeps its proof image. Map the payment row it
     // created back to the request so the confirmed row can show it read-only.
+    // approvedPaymentKey is a comma-separated list for a multi-month approval.
+    // Android attaches the proof to the FIRST row only; matching that keeps one
+    // image from appearing against every month of the same request.
     const proofByPaymentKey = {};
     myRequests.forEach(r => {
-      if (r.proofName && r.approvedPaymentKey) proofByPaymentKey[r.approvedPaymentKey] = r;
+      if (!r.proofName || !r.approvedPaymentKey) return;
+      const firstKey = String(r.approvedPaymentKey).split(",")[0].trim();
+      if (firstKey) proofByPaymentKey[firstKey] = r;
     });
 
-    // History reads as a calendar: Jan at the top, Dec at the bottom, with a
-    // still-open request slotted into the month it covers.
+    // Most recent month at the top, with a still-open request slotted into the
+    // month it covers.
     const entries = [
       ...yearPayments.map(p => ({
         kind: "confirmed",
@@ -240,9 +253,10 @@ export function renderPayments(container) {
           request: r
         }))
     ].sort((a, b) => {
-      const byMonth = (a.monthKey || "").localeCompare(b.monthKey || "");
+      // Newest month first, newest record first within a month.
+      const byMonth = (b.monthKey || "").localeCompare(a.monthKey || "");
       if (byMonth !== 0) return byMonth;
-      return (a.tie || 0) - (b.tie || 0);
+      return (b.tie || 0) - (a.tie || 0);
     });
 
     contentEl.innerHTML = `
@@ -258,7 +272,7 @@ export function renderPayments(container) {
           ${monthCells.map(c => `<div class="mp-month-amount">${escapeHtml(formatRupeesCompact(c.amountMinor))}</div>`).join("")}
         </div>
         <div class="mp-bar">
-          ${monthCells.map(c => `<div class="mp-segment ${c.paid ? 'on' : ''}"></div>`).join("")}
+          ${monthCells.map(c => `<button class="mp-segment ${c.paid ? 'on' : ''}" data-month="${c.key}" title="Request ${escapeHtml(monthTitle(c.key))}"></button>`).join("")}
         </div>
         <div class="mp-bar-labels">
           ${monthCells.map(c => `<div class="mp-month-label">${MONTH_LABELS[parseInt(c.key.split('-')[1],10)-1].charAt(0)}</div>`).join("")}
@@ -273,6 +287,15 @@ export function renderPayments(container) {
     `;
 
     wireHistoryActions(contentEl);
+
+    // Tapping a month on the bar opens the request dialog already pointed at
+    // that month (day 5, so the month is unambiguous in any timezone).
+    contentEl.querySelectorAll("[data-month]").forEach(seg => {
+      seg.addEventListener("click", () => {
+        const [y, m] = seg.dataset.month.split("-").map(Number);
+        openRequestDialog(user, new Date(y, m - 1, 5, 12, 0, 0).getTime());
+      });
+    });
   }
 
   function wireHistoryActions(scope) {
@@ -315,6 +338,10 @@ function renderHistoryRow(entry) {
   if (entry.kind === "confirmed") {
     const p = entry.payment;
     const ml = monthLabel(p.coversMonthKey);
+    // Approval of a multi-month request stamps "Approved request (2/4)" on each
+    // row; surface that so a member can see why one request became four rows.
+    const part = /\((\d+)\/(\d+)\)/.exec(p.note || "");
+    const partLabel = part ? ` · part ${part[1]} of ${part[2]}` : "";
     // Once approved the proof is part of the record - viewable, not editable.
     const r = entry.proofRequest;
     const proof = r
@@ -332,7 +359,7 @@ function renderHistoryRow(entry) {
             <span>${escapeHtml(ml)}</span>
             <span class="pill pill-green pill-tiny">Paid</span>
           </div>
-          <div class="history-row-sub">${escapeHtml(p.category || "Contribution")}</div>
+          <div class="history-row-sub">${escapeHtml((p.category || "Contribution") + partLabel)}</div>
           ${proof}
         </div>
         <div class="history-row-amount">${formatRupees(p.amountMinor || 0)}</div>
@@ -341,7 +368,13 @@ function renderHistoryRow(entry) {
   }
 
   const r = entry.request;
-  const ml = monthLabel(r.coversMonthKey);
+  const months = Math.min(12, Math.max(1, r.coversMonthCount || 1));
+  const ml = months > 1
+    ? (() => {
+        const keys = nextNMonths(r.coversMonthKey, months);
+        return monthLabel(keys[0]) + " – " + monthLabel(keys[keys.length - 1]);
+      })()
+    : monthLabel(r.coversMonthKey);
   const pending = (r.status || "pending") === "pending";
   const pillClass = pending ? "pill-amber" : "pill-red";
   const pillLabel = pending ? "Pending Approval" : "Denied";
@@ -372,8 +405,13 @@ function renderHistoryRow(entry) {
   `;
 }
 
-function openRequestDialog(user) {
+/**
+ * @param {number} [prefillMillis] open pointed at a specific month (from a tap
+ *        on the 12-month bar) rather than today
+ */
+function openRequestDialog(user, prefillMillis) {
   let proof = null;   // prepared attachment, uploaded after the request exists
+  let monthsCount = 1;
 
   const dialog = document.createElement("div");
   dialog.className = "modal-overlay";
@@ -392,6 +430,20 @@ function openRequestDialog(user) {
           <span>Amount (₹) *</span>
           <input type="text" inputmode="decimal" id="r-amount" placeholder="0" />
         </label>
+
+        <div class="months-field">
+          <div class="months-text">
+            <span class="months-label">Months covered</span>
+            <span class="months-range" id="r-range"></span>
+          </div>
+          <div class="months-stepper">
+            <button type="button" class="months-btn" id="r-minus" aria-label="Fewer months">&minus;</button>
+            <span class="months-count" id="r-count">1</span>
+            <button type="button" class="months-btn" id="r-plus" aria-label="More months">+</button>
+          </div>
+        </div>
+        <div class="months-split" id="r-split"></div>
+
         <label class="field">
           <span>Category</span>
           <input type="text" id="r-category" value="Member contribution" />
@@ -417,13 +469,53 @@ function openRequestDialog(user) {
   document.body.appendChild(dialog);
 
   const today = new Date();
-  const todayStr = today.getFullYear() + "-" + String(today.getMonth()+1).padStart(2,"0") + "-" + String(today.getDate()).padStart(2,"0");
-  dialog.querySelector("#r-date").value = todayStr;
-  dialog.querySelector("#r-date").max = todayStr;
+  const fmt = d => d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
+  const todayStr = fmt(today);
+  const dateEl = dialog.querySelector("#r-date");
+  dateEl.value = prefillMillis ? fmt(new Date(prefillMillis)) : todayStr;
+  dateEl.max = todayStr;
 
-  dialog.querySelector("#r-amount").addEventListener("input", e => {
+  const amountEl = dialog.querySelector("#r-amount");
+  amountEl.addEventListener("input", e => {
     if (!/^\d*\.?\d{0,2}$/.test(e.target.value)) e.target.value = e.target.value.slice(0, -1);
+    renderMonths();
   });
+  dateEl.addEventListener("change", renderMonths);
+
+  /**
+   * The amount is the TOTAL across every covered month, so show what that
+   * works out to per month. The preview truncates (Android does the same);
+   * the approval itself puts the remainder on the first month, so the rows
+   * always add back up to the total exactly.
+   */
+  function renderMonths() {
+    dialog.querySelector("#r-count").textContent = monthsCount;
+    dialog.querySelector("#r-minus").disabled = monthsCount <= 1;
+    dialog.querySelector("#r-plus").disabled = monthsCount >= 12;
+
+    const startKey = monthKeyFromMillis(new Date((dateEl.value || todayStr) + "T12:00:00").getTime());
+    const rangeEl = dialog.querySelector("#r-range");
+    if (monthsCount > 1) {
+      const keys = nextNMonths(startKey, monthsCount);
+      rangeEl.textContent = monthTitle(keys[0]) + " – " + monthTitle(keys[keys.length - 1]);
+    } else {
+      rangeEl.textContent = monthTitle(startKey);
+    }
+
+    const amountMinor = Math.round((parseFloat(amountEl.value) || 0) * 100);
+    const splitEl = dialog.querySelector("#r-split");
+    splitEl.textContent = (monthsCount > 1 && amountMinor > 0)
+      ? "≈ " + formatRupees(Math.floor(amountMinor / monthsCount)) + " / month"
+      : "";
+  }
+
+  dialog.querySelector("#r-minus").addEventListener("click", () => {
+    if (monthsCount > 1) { monthsCount--; renderMonths(); }
+  });
+  dialog.querySelector("#r-plus").addEventListener("click", () => {
+    if (monthsCount < 12) { monthsCount++; renderMonths(); }
+  });
+  renderMonths();
 
   function renderProofList() {
     const el = dialog.querySelector("#r-proof-list");
@@ -492,12 +584,12 @@ function openRequestDialog(user) {
         requestedDateMillis: dateMillis,
         coversMonthKey,
         category,
+        coversMonthCount: monthsCount,
         status: "pending",
         createdAtMillis: serverTimestamp(),
         decidedByEmail: "",
         decidedByName: "",
         decidedAtMillis: 0,
-        discussionMessageKey: "",
         approvedPaymentKey: "",
         proofName: proof ? proof.name : ""
       });
@@ -516,7 +608,9 @@ function openRequestDialog(user) {
         }
       }
 
-      window.showSnackbar?.("Request submitted - awaiting approval");
+      window.showSnackbar?.(monthsCount > 1
+        ? `Request submitted for ${monthsCount} months - awaiting approval`
+        : "Request submitted - awaiting approval");
       close();
     } catch (e) {
       submitBtn.disabled = false;

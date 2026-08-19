@@ -6,11 +6,13 @@
 import {
   getDatabase,
   ref,
-  onValue
+  onValue,
+  get
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js";
 
 import { firebaseApp } from "./firebase-init.js";
-import { getSelectedYear, onYearChange, chartStartForYear } from "./year-state.js";
+import { getSelectedYear, onYearChange, chartStartForYear, ensureYearsFromMonthKeys } from "./year-state.js";
+import { loadPaymentQr } from "./attachments.js";
 
 const db = getDatabase(firebaseApp);
 
@@ -69,6 +71,17 @@ export function renderHome(container) {
       <div class="home-title">Hasnain Karimain Foundation</div>
       <div class="home-subtitle" id="home-greeting">Welcome</div>
     </div>
+
+    ${isAdmin ? "" : `
+    <div class="qr-card" id="qr-card" hidden>
+      <div class="qr-card-text">
+        <div class="qr-eyebrow">PAY VIA BANK QR</div>
+        <div class="qr-title">Contribute using GPay, PhonePe, Cred &amp; more</div>
+        <div class="qr-sub" id="qr-sub">Loading QR…</div>
+      </div>
+      <div class="qr-glyph" id="qr-glyph"><div class="spinner"></div></div>
+    </div>
+    `}
 
     <div class="stats-grid">
       <div class="stat-card">
@@ -180,6 +193,12 @@ export function renderHome(container) {
     });
   }
 
+  // Bank QR: members only, and only when the owner has uploaded one. The card
+  // renders in a loading state first so it doesn't pop in halfway down the
+  // page, then hides itself if there's nothing to show.
+  let qrTeardown = null;
+  if (!isAdmin) qrTeardown = setupPayQr(container);
+
   // Share card. Rendered from the numbers already on screen, so the button is
   // instant after the canvas module loads.
   const shareBtn = container.querySelector("#share-refer");
@@ -211,9 +230,13 @@ export function renderHome(container) {
   unsubPayments = onValue(ref(db, "payments"), snap => {
     paymentsByMember = {};
     const val = snap.val() || {};
+    const seen = [];
     Object.entries(val).forEach(([uid, byKey]) => {
       paymentsByMember[uid] = Object.entries(byKey || {}).map(([k, p]) => ({ key: k, ...p }));
+      paymentsByMember[uid].forEach(p => seen.push(p.coversMonthKey));
     });
+    // Any year the data actually mentions joins the year picker.
+    ensureYearsFromMonthKeys(seen);
     rerender(container);
   });
 
@@ -240,6 +263,7 @@ export function renderHome(container) {
     if (unsubPayments) unsubPayments();
     if (unsubHandovers) unsubHandovers();
     unsubYear();
+    if (qrTeardown) qrTeardown();
     unsubMembers = unsubPayments = unsubHandovers = null;
   };
 }
@@ -381,6 +405,87 @@ function formatRupeesCompact(amountMinor) {
   }
   const l = rupees / 100000;
   return "\u20B9" + (l >= 10 ? Math.round(l) : l.toFixed(1)) + "L";
+}
+
+/**
+ * Bank-QR card for members.
+ *
+ * The image is stored base64 at /settings/paymentQr and fetched once, on
+ * mount. If the owner hasn't uploaded one the card removes itself. Tapping it
+ * opens the QR full-width, plus an "Open UPI apps" button when a UPI ID is
+ * configured - that hands off to GPay / PhonePe / Paytm via a upi:// link,
+ * with no amount, so the member types what they're paying.
+ */
+function setupPayQr(container) {
+  const card = container.querySelector("#qr-card");
+  if (!card) return null;
+
+  let cancelled = false;
+  let qr = null;
+  let upi = { upiId: "", upiName: "" };
+
+  card.hidden = false;   // show in loading state so it doesn't pop in later
+
+  (async () => {
+    try {
+      const [settingsSnap, blob] = await Promise.all([
+        get(ref(db, "settings")),
+        loadPaymentQr()
+      ]);
+      if (cancelled) return;
+      const v = settingsSnap.val() || {};
+      upi = { upiId: String(v.upiId || "").trim(), upiName: String(v.upiName || "").trim() };
+      qr = blob;
+    } catch (e) {
+      console.warn("QR load failed", e);
+    }
+    if (cancelled) return;
+
+    if (!qr) { card.remove(); return; }
+
+    card.querySelector("#qr-sub").textContent = "Tap to view QR and pay";
+    card.querySelector("#qr-glyph").innerHTML = `<img alt="" src="data:image/png;base64,${qr.base64}" />`;
+    card.classList.add("ready");
+    card.addEventListener("click", () => openQrDialog(qr, upi));
+  })();
+
+  return function teardown() { cancelled = true; };
+}
+
+function openQrDialog(qr, upi) {
+  const hasUpi = !!upi.upiId;
+  const dialog = document.createElement("div");
+  dialog.className = "modal-overlay";
+  dialog.innerHTML = `
+    <div class="modal">
+      <div class="modal-title">Pay via bank QR</div>
+      <div class="modal-body">
+        <img class="qr-full" alt="Payment QR code" src="data:image/png;base64,${qr.base64}" />
+        <div class="qr-help">${
+          hasUpi
+            ? "Open your UPI app below, or scan this QR from another device."
+            : "Scan this QR from another device to pay."
+        }</div>
+      </div>
+      <div class="modal-actions">
+        <button class="modal-btn" id="qr-close">Close</button>
+        ${hasUpi ? `<a class="modal-btn primary" id="qr-open" href="#">Open UPI apps</a>` : ""}
+      </div>
+    </div>
+  `;
+  document.body.appendChild(dialog);
+
+  if (hasUpi) {
+    // No `am` (amount) and no `tn` (note) on purpose, matching Android: the
+    // member enters the amount in their own UPI app.
+    const link = "upi://pay?pa=" + encodeURIComponent(upi.upiId) +
+      "&pn=" + encodeURIComponent(upi.upiName || "HKF") + "&cu=INR";
+    dialog.querySelector("#qr-open").href = link;
+  }
+
+  function close() { if (dialog.parentNode) document.body.removeChild(dialog); }
+  dialog.querySelector("#qr-close").addEventListener("click", close);
+  dialog.addEventListener("click", e => { if (e.target === dialog) close(); });
 }
 
 /**

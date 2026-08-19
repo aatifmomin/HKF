@@ -43,6 +43,7 @@ import {
   JOIN_APPROVED
 } from "./members-self.js";
 import { viewPaymentProof } from "./attachments.js";
+import { nextNMonths } from "./year-state.js";
 
 const db = getDatabase(firebaseApp);
 
@@ -437,7 +438,14 @@ function renderRequestCard(card, stateClass, viewerIsOwner, busy) {
       ${viewerIsOwner ? `<button class="activity-btn" data-act="req-edit" data-key="${escapeHtml(card.key)}">Edit</button>` : ""}`;
   }
 
-  const detail = [formatRupees(r.amountMinor), monthLabel(r.coversMonthKey)];
+  const months = Math.min(12, Math.max(1, r.coversMonthCount || 1));
+  const span = months > 1
+    ? (() => {
+        const keys = nextNMonths(r.coversMonthKey, months);
+        return `${monthLabel(keys[0])} – ${monthLabel(keys[keys.length - 1])} (${months} months)`;
+      })()
+    : monthLabel(r.coversMonthKey);
+  const detail = [formatRupees(r.amountMinor), span];
   if (r.category) detail.push(r.category);
 
   return cardShell({
@@ -556,30 +564,55 @@ async function approvePaymentRequest(req, actor, force = false) {
     decidedAtMillis: serverTimestamp()
   });
 
-  let paymentKey = null;
-  try {
-    const paymentRef = push(ref(db, "payments/" + req.memberUid));
-    await set(paymentRef, {
-      coversMonthKey: req.coversMonthKey,
-      amountMinor: req.amountMinor || 0,
-      category: req.category || "Member contribution",
-      note: "Approved request",
-      batchKey: paymentRef.key,
-      recordedByEmail: actor?.email || "",
-      recordedAtMillis: Date.now()
-    });
-    await recalcMemberTotal(req.memberUid);
-    paymentKey = paymentRef.key;
-  } catch (e) {
-    console.error("payment write failed", e);
+  // A request can cover several consecutive months. The amount on the request
+  // is the TOTAL; approval writes one payment row per month, splitting it with
+  // floor division and putting the remainder on the FIRST month, so the rows
+  // always add back up to exactly the total. Identical arithmetic to Android:
+  //   perMonth  = floor(total / n)
+  //   remainder = total - perMonth * n
+  const monthCount = Math.min(12, Math.max(1, req.coversMonthCount || 1));
+  const monthKeys = nextNMonths(req.coversMonthKey, monthCount);
+  const total = req.amountMinor || 0;
+  const perMonth = Math.floor(total / monthCount);
+  const remainder = total - perMonth * monthCount;
+
+  const createdKeys = [];
+  let failed = false;
+  for (let i = 0; i < monthKeys.length; i++) {
+    try {
+      const paymentRef = push(ref(db, "payments/" + req.memberUid));
+      await set(paymentRef, {
+        coversMonthKey: monthKeys[i],
+        amountMinor: perMonth + (i === 0 ? remainder : 0),
+        category: req.category || "Member contribution",
+        note: monthCount === 1 ? "Approved request" : `Approved request (${i + 1}/${monthCount})`,
+        batchKey: paymentRef.key,
+        recordedByEmail: actor?.email || "",
+        recordedAtMillis: Date.now()
+      });
+      await recalcMemberTotal(req.memberUid);
+      createdKeys.push(paymentRef.key);
+    } catch (e) {
+      console.error("payment write failed", e);
+      failed = true;
+      break;
+    }
   }
 
-  if (paymentKey) {
-    // Stored so a later revert deletes exactly this row rather than guessing.
-    await update(ref(db, "paymentRequests/" + req.key), { approvedPaymentKey: paymentKey })
+  if (!failed && createdKeys.length) {
+    // Comma-joined so a later revert deletes exactly these rows. A
+    // single-month approval stores one bare key, so the format stays
+    // backward compatible with rows approved before multi-month existed.
+    await update(ref(db, "paymentRequests/" + req.key), { approvedPaymentKey: createdKeys.join(",") })
       .catch(() => { /* best effort - revert falls back to matching */ });
     return true;
   }
+
+  // Partial failure: unwind whatever landed so totals don't drift.
+  for (const k of createdKeys) {
+    await fbRemove(ref(db, "payments/" + req.memberUid + "/" + k)).catch(() => {});
+  }
+  if (createdKeys.length) await recalcMemberTotal(req.memberUid).catch(() => {});
 
   // Payment failed: put the request back so an admin can retry.
   await update(ref(db, "paymentRequests/" + req.key), {
@@ -616,32 +649,36 @@ async function revertApprovedRequest(req, actor) {
   let removedMinor = 0;
 
   if (uid) {
-    let paymentKey = req.approvedPaymentKey || "";
-    if (paymentKey) {
-      const snap = await get(ref(db, "payments/" + uid + "/" + paymentKey));
-      if (snap.exists()) removedMinor = snap.val()?.amountMinor || 0;
-      else paymentKey = "";
-    }
+    const allSnap = await get(ref(db, "payments/" + uid));
+    const rows = allSnap.val() || {};
 
-    if (!paymentKey) {
-      const allSnap = await get(ref(db, "payments/" + uid));
-      const candidates = Object.entries(allSnap.val() || {}).filter(([, p]) =>
+    // approvedPaymentKey is a comma-separated list once a request can cover
+    // several months. Split it and delete every row it names.
+    const storedKeys = String(req.approvedPaymentKey || "")
+      .split(",").map(k => k.trim()).filter(Boolean)
+      .filter(k => rows[k]);
+
+    let targets = storedKeys;
+    if (targets.length === 0) {
+      // Legacy fallback for requests approved before the key was stamped.
+      // Note this can only ever match a SINGLE-month approval - a split row's
+      // note and amount both differ - which is correct, because multi-month
+      // approvals always carry the key.
+      const candidates = Object.entries(rows).filter(([, p]) =>
         (p.note || "") === "Approved request" &&
         (p.coversMonthKey || "") === (req.coversMonthKey || "") &&
         (p.amountMinor || 0) === (req.amountMinor || 0)
       );
       const preferred = candidates.find(([, p]) => (p.recordedByEmail || "") === (req.decidedByEmail || ""));
       const chosen = preferred || candidates[0];
-      if (chosen) {
-        paymentKey = chosen[0];
-        removedMinor = chosen[1]?.amountMinor || 0;
-      }
+      if (chosen) targets = [chosen[0]];
     }
 
-    if (paymentKey) {
-      await fbRemove(ref(db, "payments/" + uid + "/" + paymentKey));
-      await recalcMemberTotal(uid);
+    for (const k of targets) {
+      removedMinor += rows[k]?.amountMinor || 0;
+      await fbRemove(ref(db, "payments/" + uid + "/" + k));
     }
+    if (targets.length) await recalcMemberTotal(uid);
   }
 
   await update(ref(db, "paymentRequests/" + req.key), {
@@ -687,6 +724,14 @@ async function revertHandoverToPending(handover) {
  *   Denied  -> Approved : records the payment, same path as a fresh approval
  *   Approved -> Denied  : deletes the recorded payment and recomputes totals
  */
+/** "Jan 2026" or "Jan 2026 – Apr 2026 (4 months)". */
+function coveredSpan(req) {
+  const months = Math.min(12, Math.max(1, req.coversMonthCount || 1));
+  if (months <= 1) return monthLabel(req.coversMonthKey);
+  const keys = nextNMonths(req.coversMonthKey, months);
+  return `${monthLabel(keys[0])} – ${monthLabel(keys[keys.length - 1])} (${months} months)`;
+}
+
 function openDecisionEditor(req, actor) {
   const wasApproved = statusOf(req) === "approved";
   const who = req.memberName || req.memberEmail || "this member";
@@ -702,7 +747,7 @@ function openDecisionEditor(req, actor) {
             <span>Member</span><strong>${escapeHtml(who)}</strong>
           </div>
           <div class="decision-summary-row">
-            <span>Covers</span><strong>${escapeHtml(monthLabel(req.coversMonthKey))}</strong>
+            <span>Covers</span><strong>${escapeHtml(coveredSpan(req))}</strong>
           </div>
           <div class="decision-summary-row">
             <span>Amount</span><strong>${escapeHtml(formatRupees(req.amountMinor))}</strong>
@@ -716,7 +761,8 @@ function openDecisionEditor(req, actor) {
         ${wasApproved ? `
           <div class="danger-note">
             <strong>Currently APPROVED.</strong>
-            Changing to Denied will delete the payment recorded by the approval
+            Changing to Denied will delete the payment${
+              (req.coversMonthCount || 1) > 1 ? " rows" : ""} recorded by the approval
             and reduce ${escapeHtml(who)}'s total. Every figure that includes it —
             their year total, the monthly collection chart, the pending balance —
             is recalculated. This cannot be undone automatically.
@@ -724,9 +770,10 @@ function openDecisionEditor(req, actor) {
         ` : `
           <div class="info-note">
             <strong>Currently DENIED.</strong>
-            Changing to Approved will record the
-            ${escapeHtml(formatRupees(req.amountMinor))} payment for
-            ${escapeHtml(monthLabel(req.coversMonthKey))} against ${escapeHtml(who)}.
+            Changing to Approved will record
+            ${escapeHtml(formatRupees(req.amountMinor))} for
+            ${escapeHtml(coveredSpan(req))} against ${escapeHtml(who)}${
+              (req.coversMonthCount || 1) > 1 ? ", split into one payment row per month" : ""}.
           </div>
         `}
       </div>

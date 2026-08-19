@@ -242,10 +242,31 @@ export function observeMembership(user, callback) {
   let sawMember = false;
   let sawRequest = false;
   let resubmitting = false;
+  let restoring = false;
 
   function emit() {
     if (!sawMember || !sawRequest) return;   // wait for both first snapshots
     if (hasMember) { callback({ status: MEMBERSHIP_MEMBER }); return; }
+
+    // The row can vanish under a privileged user - most obviously when the
+    // owner uses Settings > Delete all members, which takes their own row with
+    // it. Android only resolves membership at sign-in so it doesn't notice
+    // until relaunch; our live listener would otherwise dump the owner onto
+    // the "Pending approval" screen inside their own foundation. Re-create the
+    // row instead, which is exactly what the next sign-in would have done.
+    if (user.email && isOwnerEmail(user.email)) {
+      if (!restoring) {
+        restoring = true;
+        ensureMemberExists(user.uid, user.email, user.displayName)
+          .catch(e => console.warn("owner row restore failed", e))
+          .finally(() => { restoring = false; });
+      }
+      // Keep reporting MEMBER for every snapshot until the row is back.
+      // Falling through even once would flash the gate screen, and that
+      // remounts the shell and drops the owner out of Settings.
+      callback({ status: MEMBERSHIP_MEMBER });
+      return;
+    }
 
     if (!request) {
       // The row vanished - the owner wiped activity from Settings. Put the
@@ -335,6 +356,30 @@ export async function deleteJoinRequest(request) {
 function deciderName(user) {
   if (!user) return "";
   return (user.displayName && user.displayName.trim()) || (user.email || "").split("@")[0] || "";
+}
+
+/**
+ * A member editing their own profile from the Profile tab.
+ *
+ * Deliberately narrow: only the four fields a member owns. memberId, role,
+ * email, displayName, joinedAtMillis and totalPaidMinor are admin-managed and
+ * are not in the payload, so a member can't quietly promote themselves or
+ * rewrite their own total.
+ */
+export async function updateSelfProfile(uid, fields) {
+  if (!uid) return false;
+  try {
+    await update(ref(db, "members/" + uid), {
+      contactNumber: String(fields.contactNumber || "").trim(),
+      currentAddress: String(fields.currentAddress || "").trim(),
+      permanentAddress: String(fields.permanentAddress || "").trim(),
+      occupation: String(fields.occupation || "").trim()
+    });
+    return true;
+  } catch (e) {
+    console.warn("self profile update failed", e);
+    return false;
+  }
 }
 
 // ---------------- Totals ----------------

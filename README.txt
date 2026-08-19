@@ -23,8 +23,9 @@ Files included:
   handover.js             — handovers list, dialog, document attachments
   payments.js             — member's My Payments screen
   activity.js             — admin Activity feed (replaces Discussion)
-  reminder.js             — admin Reminder tab (unpaid this month + SMS)
+  reminder.js             — admin Reminder tab (payment SMS + contact email)
   settings.js             — owner Settings (gear on Home)
+  profile.js              — member Profile tab (own record, self-editable)
   database.rules.json     — Realtime Database security rules (see below)
   ANDROID-COMPAT.md       — the Android data contract. READ THIS FIRST.
 
@@ -91,6 +92,34 @@ Share & refer
 Member Home simplified
   Annual report downloads are admin/owner only. Members still see the stats,
   charts and the share button.
+
+Multi-month payment requests
+  A member can cover up to 12 consecutive months in one request. The amount is
+  the TOTAL; the dialog shows the covered range and a per-month preview.
+  Approving writes one payment row per month, splitting the total with the
+  remainder on the first month so the rows add back up exactly. Each row is
+  noted "Approved request (2/4)". Reverting removes all of them.
+  Tapping a month on the 12-month bar opens the request pre-set to that month.
+
+Member Profile tab
+  The member's third tab is now Profile, not Members. It shows their own
+  record with PAID <year> / ALL TIME / AVG PER MONTH, and lets them edit their
+  own contact number, addresses and occupation — nothing admin-managed. A
+  banner nudges them while the contact number is empty.
+
+Bank QR and UPI
+  The owner uploads a payment QR and a UPI ID in Settings. Members get a
+  "Pay via bank QR" card on Home that opens the QR full-size plus an "Open UPI
+  apps" button (GPay / PhonePe / Cred). No amount is pre-filled.
+
+Reminder: Contact Update mode
+  The Reminder tab has two modes. Payment chases members who haven't paid this
+  month by SMS; Contact Update chases members with no phone number at all, by
+  email, using the owner's message.
+
+Danger zone
+  Three separate wipes instead of one: all members (+payments +counter), all
+  handovers (+documents +counter), all activity (requests +proofs +joins).
 
 
 Synced with Android
