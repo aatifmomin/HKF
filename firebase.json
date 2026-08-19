@@ -1,0 +1,51 @@
+{
+  "//": [
+    "Firebase Hosting config. The headers block is the important part.",
+    "",
+    "By default Hosting serves static assets with Cache-Control: max-age=3600,",
+    "so for up to an hour after a deploy your browser keeps running the OLD",
+    "JavaScript and you see none of the changes. Worse, an ES module graph is",
+    "cached per-file, so a plain reload can leave you on a mix of new and old.",
+    "",
+    "These rules make the browser revalidate the app code on every load (a",
+    "304 when nothing changed, so it stays fast) while letting the logo cache",
+    "normally. Combined with the ?v= stamp on every import, a deploy is",
+    "visible immediately.",
+    "",
+    "If you deploy somewhere other than Firebase Hosting, this file is ignored",
+    "and you should set the equivalent headers there."
+  ],
+  "hosting": {
+    "public": ".",
+    "ignore": [
+      "firebase.json",
+      "database.rules.json",
+      "**/.*",
+      "**/node_modules/**",
+      "*.md",
+      "*.txt",
+      "*.psd",
+      "bump-version.sh"
+    ],
+    "headers": [
+      {
+        "source": "**/*.@(js|css|html)",
+        "headers": [
+          { "key": "Cache-Control", "value": "no-cache, max-age=0, must-revalidate" }
+        ]
+      },
+      {
+        "source": "**/*.@(png|jpg|jpeg|svg|webp|ico)",
+        "headers": [
+          { "key": "Cache-Control", "value": "public, max-age=86400" }
+        ]
+      }
+    ],
+    "rewrites": [
+      { "source": "**", "destination": "/index.html" }
+    ]
+  },
+  "database": {
+    "rules": "database.rules.json"
+  }
+}

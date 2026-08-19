@@ -10,7 +10,7 @@
 //      show the role picker. Regular members skip straight to their shell.
 //   4. Bottom nav is animated between tab switches.
 
-import { signIn, signOut, observeAuth, observeAdminEmails, isAdminEmail, isOwner, displayNameFor } from "./auth.js";
+import { signIn, signOut, observeAuth, observeAdminEmails, isAdminEmail, isOwner, displayNameFor } from "./auth.js?v=2026-08-19a";
 import {
   resolveMembership,
   observeMembership,
@@ -18,16 +18,17 @@ import {
   MEMBERSHIP_MEMBER,
   MEMBERSHIP_PENDING,
   MEMBERSHIP_DECLINED
-} from "./members-self.js";
-import { getSelectedYear, getSupportedYears, setSelectedYear } from "./year-state.js";
-import { renderHome } from "./home.js";
-import { renderActivity } from "./activity.js";
-import { renderHandover } from "./handover.js";
-import { renderPayments } from "./payments.js";
-import { renderMembers } from "./members.js";
-import { renderProfile } from "./profile.js";
-import { renderReminder } from "./reminder.js";
-import { renderSettings } from "./settings.js";
+} from "./members-self.js?v=2026-08-19a";
+import { getSelectedYear, getSupportedYears, setSelectedYear } from "./year-state.js?v=2026-08-19a";
+import { renderHome } from "./home.js?v=2026-08-19a";
+import { renderActivity } from "./activity.js?v=2026-08-19a";
+import { renderHandover } from "./handover.js?v=2026-08-19a";
+import { renderPayments } from "./payments.js?v=2026-08-19a";
+import { renderMembers } from "./members.js?v=2026-08-19a";
+import { renderProfile } from "./profile.js?v=2026-08-19a";
+import { renderReminder } from "./reminder.js?v=2026-08-19a";
+import { renderSettings } from "./settings.js?v=2026-08-19a";
+import { BUILD_ID } from "./version.js?v=2026-08-19a";
 
 // Tab definitions per role. Mirrors Android nav order. Members no longer have
 // a Discussion tab at all - the chat is gone, and the Activity feed that
@@ -59,6 +60,11 @@ let unsubMembership = null;
 let currentScreen = null;   // "signin" | "loading" | "pending" | "declined" | "role" | "shell"
 
 const root = document.getElementById("app");
+
+// Printed so "am I actually looking at the new build?" is answerable in one
+// glance at the console, without digging through Sources.
+console.log("%cHKF web build " + BUILD_ID, "color:#9A6A1F;font-weight:bold");
+
 boot();
 
 function boot() {
@@ -170,6 +176,7 @@ function renderSignIn() {
           <div class="signin-subtitle">Sign in to continue</div>
           <button class="gold-button" id="signin-btn">Continue with Google</button>
           <div id="signin-error" style="margin-top:14px;color:var(--red-fg);font-size:12px;"></div>
+          <div class="build-stamp">build ${escapeHtml(BUILD_ID)}</div>
         </div>
       </div>
     </div>

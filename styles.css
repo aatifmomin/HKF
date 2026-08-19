@@ -2345,3 +2345,12 @@ a.row-btn {
   color: var(--red-fg);
   background: var(--red-bg);
 }
+
+/* Build identity - deliberately quiet, but always reachable. */
+.build-stamp {
+  margin-top: 16px;
+  font-size: 10px;
+  line-height: 1.5;
+  color: var(--text-3);
+  text-align: center;
+}

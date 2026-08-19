@@ -20,10 +20,11 @@ import {
   update
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js";
 
-import { firebaseApp } from "./firebase-init.js";
-import { isOwner } from "./auth.js";
-import { renderAdmins } from "./admins.js";
-import { DEFAULT_REMINDER_MESSAGE, DEFAULT_CONTACT_MESSAGE } from "./reminder.js";
+import { firebaseApp } from "./firebase-init.js?v=2026-08-19a";
+import { isOwner } from "./auth.js?v=2026-08-19a";
+import { BUILD_ID } from "./version.js?v=2026-08-19a";
+import { renderAdmins } from "./admins.js?v=2026-08-19a";
+import { DEFAULT_REMINDER_MESSAGE, DEFAULT_CONTACT_MESSAGE } from "./reminder.js?v=2026-08-19a";
 import {
   pickFiles,
   prepareAttachment,
@@ -31,7 +32,7 @@ import {
   removePaymentQr,
   loadPaymentQr,
   ACCEPT_IMAGES
-} from "./attachments.js";
+} from "./attachments.js?v=2026-08-19a";
 
 const db = getDatabase(firebaseApp);
 
@@ -180,6 +181,12 @@ export function renderSettings(container, { onBack } = {}) {
         ${WIPES.map(w => `
           <button class="modal-btn destructive settings-save" data-wipe="${w.id}">${escapeHtml(w.button)}</button>
         `).join("")}
+      </div>
+
+      <div class="build-stamp">
+        Web build ${escapeHtml(BUILD_ID)} — if this doesn't match the build you
+        just deployed, your browser is still running a cached copy. Hard-reload
+        (Ctrl+Shift+R, or Cmd+Shift+R) to pick it up.
       </div>
     `;
 

@@ -10,9 +10,9 @@ import {
   get
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js";
 
-import { firebaseApp } from "./firebase-init.js";
-import { getSelectedYear, onYearChange, chartStartForYear, ensureYearsFromMonthKeys } from "./year-state.js";
-import { loadPaymentQr } from "./attachments.js";
+import { firebaseApp } from "./firebase-init.js?v=2026-08-19a";
+import { getSelectedYear, onYearChange, chartStartForYear, ensureYearsFromMonthKeys } from "./year-state.js?v=2026-08-19a";
+import { loadPaymentQr } from "./attachments.js?v=2026-08-19a";
 
 const db = getDatabase(firebaseApp);
 
@@ -179,7 +179,7 @@ export function renderHome(container) {
   if (pdfBtn) {
     pdfBtn.addEventListener("click", async () => {
       await runDownload(pdfBtn, async () => {
-        const mod = await import("./year-report.js");
+        const mod = await import("./year-report.js?v=2026-08-19a");
         await mod.downloadYearReportPdf(getSelectedYear());
       }, "PDF");
     });
@@ -187,7 +187,7 @@ export function renderHome(container) {
   if (xlsxBtn) {
     xlsxBtn.addEventListener("click", async () => {
       await runDownload(xlsxBtn, async () => {
-        const mod = await import("./year-report.js");
+        const mod = await import("./year-report.js?v=2026-08-19a");
         await mod.downloadYearReportXlsx(getSelectedYear());
       }, "Excel");
     });
@@ -207,7 +207,7 @@ export function renderHome(container) {
     shareBtn.disabled = true;
     shareBtn.innerHTML = `<span class="share-icon">⋯</span><span>Building...</span>`;
     try {
-      const mod = await import("./share-card.js");
+      const mod = await import("./share-card.js?v=2026-08-19a");
       const outcome = await mod.shareReferralCard({ ...lastStats, year: getSelectedYear() });
       if (outcome === "downloaded") {
         window.showSnackbar?.("Card saved to your downloads - attach it to a message");

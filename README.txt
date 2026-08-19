@@ -1,12 +1,99 @@
 Hasnain Karimain Foundation — full web app bundle
 ==================================================
 
+IF YOU DEPLOYED AND CAN'T SEE THE CHANGES, READ THIS FIRST
+----------------------------------------------------------
+
+Every build now carries a visible id. Check it before anything else:
+
+  * it is printed on the SIGN-IN screen, under the Google button
+  * it is at the bottom of Settings (gear on Home, owner only)
+  * it is logged to the browser console at startup:
+        HKF web build 2026-08-19a
+
+This build is  2026-08-19a.
+
+  Shows 2026-08-19a  -> the new code IS live. If a specific screen still
+                        looks wrong, see "which screens changed" below —
+                        several of the new ones are MEMBER-only and are
+                        invisible while you're signed in as Admin.
+
+  Shows nothing, or  -> your browser or host is still serving the old files.
+  an older id           Work through the three causes below.
+
+1. Browser cache. This app is ES modules, and the browser caches each .js
+   file separately, so an ordinary reload can leave you running a mix of old
+   and new. Hard-reload: Ctrl+Shift+R (Windows) / Cmd+Shift+R (Mac). If that
+   doesn't do it, open DevTools > Application > Clear site data, or try a
+   private window — a private window is the fastest way to prove whether it's
+   a cache problem, because it starts with none.
+
+   From this build on, every import carries a ?v=<build id>, so a new build is
+   a new URL and this should stop happening. It cannot fix the ONE build where
+   you upgrade INTO this scheme, though: index.html itself may still be
+   cached. Hard-reload once and you're set.
+
+2. Host cache. Firebase Hosting serves static files with max-age=3600 by
+   default, so your changes can be up to an hour late. The included
+   firebase.json fixes this: it tells Hosting to make browsers revalidate
+   .js/.css/.html every time (still fast — an unchanged file returns 304).
+   Deploy it along with the app. On any other host, set the equivalent
+   Cache-Control header for .js files.
+
+3. Files not actually uploaded. This build adds NEW files. If your upload
+   only replaced files that already existed, the new ones are missing. Confirm
+   all of these are on the server:
+
+     version.js  profile.js  reminder.js  settings.js  attachments.js
+     lib-loader.js  members-export.js  share-card.js  year-state.js
+
+   A missing import breaks the whole module graph, so the symptom is the page
+   sticking on "Loading…" with a red 404 in the console — worth checking the
+   console either way.
+
+AFTER YOU EDIT ANY .js FILE
+---------------------------
+
+Run ./bump-version.sh before redeploying. It rewrites the build id in
+version.js and the ?v= stamp on every import, so browsers fetch the new code
+instead of reusing what they already have.
+
+  ./bump-version.sh              uses today's date, e.g. 2026-08-20a
+  ./bump-version.sh my-build-7   uses whatever you pass
+
+No shell? Edit version.js by hand and do a find-and-replace of the old ?v=
+value across the .js files and index.html. All of them must match — a module
+imported under two different stamps loads twice, and shared state splits in
+two.
+
+WHICH SCREENS CHANGED, AND WHO SEES THEM
+----------------------------------------
+
+Sign in as a MEMBER (or pick "Continue as Member" at the role screen) to see:
+  * Profile tab            — third tab, renamed from Members
+  * Pay via bank QR card   — Home, only once the owner uploads a QR in Settings
+  * Months-covered stepper — Payments > + Request
+  * Payment reminder       — Payments, only from reminderDay onward
+
+Sign in as ADMIN / OWNER to see:
+  * Reminder tab           — fifth tab, with the Payment / Contact Update modes
+  * Settings               — gear beside Sign out, OWNER ONLY
+  * Multi-month ranges     — Activity, on requests covering >1 month
+  * Three danger-zone wipes — Settings
+
+If you were signed in as Admin, the Profile tab and the QR card are correctly
+absent — admins get the Members directory and the report downloads instead.
+
+
 This zip contains every file the live web app needs EXCEPT:
   - firebase-config.js (your real Firebase keys; keep your existing one)
   - Logo.png (your foundation logo; keep your existing one)
 
 Files included:
   index.html              — entry point, loads app.js
+  version.js              — the build id (see the top of this file)
+  bump-version.sh         — stamps a new build id across every import
+  firebase.json           — Hosting config incl. the cache headers
   styles.css              — all styles
   app.js                  — routing, sign-in, join gate, role picker, year chip
   auth.js                 — Google sign-in + admin email observer
@@ -212,7 +299,8 @@ Install / deploy:
        git rm web/discussion.js
        git commit -m "Update web app"
        git push
-  6. Hard-reload the live site (Ctrl+Shift+R) so cached JS gets refreshed.
+  6. Hard-reload the live site (Ctrl+Shift+R) and confirm the build id on the
+     sign-in screen matches the one at the top of this file.
 
 If you are deploying from scratch, you also need:
   - firebase-config.js with your real Firebase credentials

@@ -17,9 +17,9 @@ import {
   get
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js";
 
-import { firebaseApp } from "./firebase-init.js";
-import { updateSelfProfile } from "./members-self.js";
-import { copyToClipboard, memberDisplayName } from "./members.js";
+import { firebaseApp } from "./firebase-init.js?v=2026-08-19a";
+import { updateSelfProfile } from "./members-self.js?v=2026-08-19a";
+import { copyToClipboard, memberDisplayName } from "./members.js?v=2026-08-19a";
 
 const db = getDatabase(firebaseApp);
 

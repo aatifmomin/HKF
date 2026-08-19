@@ -18,9 +18,9 @@ import {
   serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js";
 
-import { firebaseApp } from "./firebase-init.js";
-import { isOwner } from "./auth.js";
-import { OWNER_EMAIL } from "./firebase-config.js";
+import { firebaseApp } from "./firebase-init.js?v=2026-08-19a";
+import { isOwner } from "./auth.js?v=2026-08-19a";
+import { OWNER_EMAIL } from "./firebase-config.js?v=2026-08-19a";
 
 const db = getDatabase(firebaseApp);
 
