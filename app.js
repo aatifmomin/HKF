@@ -10,7 +10,7 @@
 //      show the role picker. Regular members skip straight to their shell.
 //   4. Bottom nav is animated between tab switches.
 
-import { signIn, signOut, observeAuth, observeAdminEmails, isAdminEmail, isOwner, displayNameFor } from "./auth.js?v=2026-08-19a";
+import { signIn, signOut, observeAuth, observeAdminEmails, isAdminEmail, isOwner, displayNameFor } from "./auth.js?v=2026-08-20a";
 import {
   resolveMembership,
   observeMembership,
@@ -18,17 +18,18 @@ import {
   MEMBERSHIP_MEMBER,
   MEMBERSHIP_PENDING,
   MEMBERSHIP_DECLINED
-} from "./members-self.js?v=2026-08-19a";
-import { getSelectedYear, getSupportedYears, setSelectedYear } from "./year-state.js?v=2026-08-19a";
-import { renderHome } from "./home.js?v=2026-08-19a";
-import { renderActivity } from "./activity.js?v=2026-08-19a";
-import { renderHandover } from "./handover.js?v=2026-08-19a";
-import { renderPayments } from "./payments.js?v=2026-08-19a";
-import { renderMembers } from "./members.js?v=2026-08-19a";
-import { renderProfile } from "./profile.js?v=2026-08-19a";
-import { renderReminder } from "./reminder.js?v=2026-08-19a";
-import { renderSettings } from "./settings.js?v=2026-08-19a";
-import { BUILD_ID } from "./version.js?v=2026-08-19a";
+} from "./members-self.js?v=2026-08-20a";
+import { getSelectedYear, getSupportedYears, setSelectedYear } from "./year-state.js?v=2026-08-20a";
+import { renderHome } from "./home.js?v=2026-08-20a";
+import { renderActivity } from "./activity.js?v=2026-08-20a";
+import { renderHandover } from "./handover.js?v=2026-08-20a";
+import { renderPayments } from "./payments.js?v=2026-08-20a";
+import { renderMembers } from "./members.js?v=2026-08-20a";
+import { renderProfile } from "./profile.js?v=2026-08-20a";
+import { renderSupport } from "./support.js?v=2026-08-20a";
+import { renderReminder } from "./reminder.js?v=2026-08-20a";
+import { renderSettings } from "./settings.js?v=2026-08-20a";
+import { BUILD_ID } from "./version.js?v=2026-08-20a";
 
 // Tab definitions per role. Mirrors Android nav order. Members no longer have
 // a Discussion tab at all - the chat is gone, and the Activity feed that
@@ -47,7 +48,8 @@ const ADMIN_TABS = [
 const MEMBER_TABS = [
   { id: "home",     label: "Home"     },
   { id: "payments", label: "Payments" },
-  { id: "members",  label: "Profile"  }
+  { id: "members",  label: "Profile"  },
+  { id: "support",  label: "Support"  }
 ];
 
 let role = null;            // "admin" | "member" | null
@@ -415,6 +417,7 @@ function renderTab(tab) {
     case "handover": activeTeardown = renderHandover(anim); break;
     case "activity": activeTeardown = renderActivity(anim); break;
     case "reminder": activeTeardown = renderReminder(anim); break;
+    case "support":  activeTeardown = renderSupport(anim); break;
     case "payments": activeTeardown = renderPayments(anim); break;
     case "settings":
       // Not a tab: Settings takes over the content area and offers a back

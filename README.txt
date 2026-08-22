@@ -70,6 +70,7 @@ WHICH SCREENS CHANGED, AND WHO SEES THEM
 ----------------------------------------
 
 Sign in as a MEMBER (or pick "Continue as Member" at the role screen) to see:
+  * Support tab            — FOURTH tab, file and track tech-support tickets
   * Profile tab            — third tab, renamed from Members
   * Pay via bank QR card   — Home, only once the owner uploads a QR in Settings
   * Months-covered stepper — Payments > + Request
@@ -78,6 +79,7 @@ Sign in as a MEMBER (or pick "Continue as Member" at the role screen) to see:
 Sign in as ADMIN / OWNER to see:
   * Reminder tab           — fifth tab, with the Payment / Contact Update modes
   * Settings               — gear beside Sign out, OWNER ONLY
+  * TECH SUPPORT queue     — Settings > TECH SUPPORT, OWNER ONLY
   * Multi-month ranges     — Activity, on requests covering >1 month
   * Three danger-zone wipes — Settings
 
@@ -96,6 +98,7 @@ Files included:
   firebase.json           — Hosting config incl. the cache headers
   styles.css              — all styles
   app.js                  — routing, sign-in, join gate, role picker, year chip
+  firebase-init.js        — Firebase app/db/auth bootstrap
   auth.js                 — Google sign-in + admin email observer
   members-self.js         — membership resolution + join-request queue
   year-state.js           — global selected-year state (2026-2030)
@@ -113,8 +116,10 @@ Files included:
   reminder.js             — admin Reminder tab (payment SMS + contact email)
   settings.js             — owner Settings (gear on Home)
   profile.js              — member Profile tab (own record, self-editable)
+  support.js              — member Support tab + owner ticket queue
   database.rules.json     — Realtime Database security rules (see below)
   ANDROID-COMPAT.md       — the Android data contract. READ THIS FIRST.
+  SETUP.md                — first-time Firebase / Hosting setup
 
 REMOVED in this build: discussion.js. The group chat and the online-presence
 strip are gone from both clients.
@@ -122,6 +127,28 @@ strip are gone from both clients.
 
 What changed in this build
 --------------------------
+
+Tech Support  (NEW — matches the Android support screens)
+  Members get a fourth tab, Support, next to Home / Payments / Profile. They
+  file an issue with a title and description and get back a ticket id (T-001,
+  T-002, ...). Their list shows open and resolved counts, a search box, and
+  each card's status pill.
+
+  The owner works the queue from Settings -> TECH SUPPORT: every ticket from
+  every member, open ones first and newest-first inside each group, with the
+  filer's name and date on the card. Resolve takes an optional note; the red
+  X deletes the ticket outright.
+
+  A resolved ticket shows the member a green block with the note and who
+  closed it, plus a "Reopen issue" button. Reopening adds their note and puts
+  the ticket back at the top of the owner's queue, marked REOPENED, without
+  losing the original resolution.
+
+  Ordinary admins do not see the queue — only the owner email does.
+
+  Two new database nodes, /techSupport and /techSupportCounter. Both are in
+  database.rules.json and BOTH MUST BE PUBLISHED or the feature is dead on
+  both clients (see "Publish the rules" below).
 
 Join approval
   Signing in no longer creates a member. A new Google account lands in
@@ -225,6 +252,13 @@ now match. Two of them were destructive:
     the two makes a payment deleted on Android leave the web total too high.
     The web now recomputes from /payments as well.
 
+Tech support tickets are shared as-is: /techSupport rows written by the web
+carry exactly the fields Android's TechSupportTicket reads, and
+/techSupportCounter is a bare number like handoversCounter (T-004 means the
+counter reads 4). The one difference is that the web allocates the id with a
+transaction rather than read-then-write, so two members filing at the same
+second can't collide on a ticket id. Mixing clients is safe.
+
 Attachments are BARE base64 (no "data:...;base64," prefix) with `type` as a
 file EXTENSION ("jpg" / "pdf"), not a mime type:
 
@@ -250,13 +284,19 @@ difference, and the Android-side bug worth fixing.
 Database rules
 --------------
 
-database.rules.json is YOUR current rule set with two nodes added: /settings
-and /reminderLog were missing, and an unlisted path in Realtime Database is
-DENIED. Until you publish it:
+database.rules.json is YOUR current rule set with FOUR nodes added: /settings,
+/reminderLog, /techSupport and /techSupportCounter were all missing, and an
+unlisted path in Realtime Database is DENIED. Until you publish it:
 
+  * Tech Support is completely dead — members can't file a ticket and the
+    owner's queue stays empty
   * Settings > Save link / Save reminder silently fails on BOTH clients
   * the Share & refer card can't read apkLink
   * "Reminder given by ..." never appears on the Reminder tab
+
+/techSupport also carries an index on memberUid, status and createdAtMillis.
+The member's own ticket list queries memberUid, so without it Firebase logs a
+warning and sorts the whole node client-side on every load.
 
 Nothing else was tightened, on purpose — both apps share these paths and a
 stricter rule would break whichever client writes it differently. The comment
@@ -293,7 +333,8 @@ Install / deploy:
   3. Verify your firebase-config.js and Logo.png are still there
      (the zip does not include them).
   4. Publish database.rules.json in the Firebase console. This one is not
-     optional — /settings and /reminderLog are denied until you do.
+     optional — /settings, /reminderLog, /techSupport and /techSupportCounter
+     are denied until you do, which means Tech Support does not work at all.
   5. Commit and push to GitHub:
        git add web/
        git rm web/discussion.js

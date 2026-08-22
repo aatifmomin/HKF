@@ -32,8 +32,8 @@ import {
   serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js";
 
-import { firebaseApp } from "./firebase-init.js?v=2026-08-19a";
-import { isOwner, displayNameFor } from "./auth.js?v=2026-08-19a";
+import { firebaseApp } from "./firebase-init.js?v=2026-08-20a";
+import { isOwner, displayNameFor } from "./auth.js?v=2026-08-20a";
 import {
   approveJoinRequest,
   declineJoinRequest,
@@ -41,9 +41,9 @@ import {
   recalcMemberTotal,
   JOIN_PENDING,
   JOIN_APPROVED
-} from "./members-self.js?v=2026-08-19a";
-import { viewPaymentProof } from "./attachments.js?v=2026-08-19a";
-import { nextNMonths } from "./year-state.js?v=2026-08-19a";
+} from "./members-self.js?v=2026-08-20a";
+import { viewPaymentProof } from "./attachments.js?v=2026-08-20a";
+import { nextNMonths } from "./year-state.js?v=2026-08-20a";
 
 const db = getDatabase(firebaseApp);
 

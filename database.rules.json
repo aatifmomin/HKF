@@ -3,8 +3,9 @@
 // Paste into Firebase Console > Realtime Database > Rules, then Publish.
 // (The console accepts these // comments; a strict JSON parser will not.)
 //
-// This is YOUR existing rule set with two nodes added. Both clients now read
-// and write /settings, and the Reminder tab writes /reminderLog - neither was
+// This is YOUR existing rule set with FOUR nodes added. Both clients now read
+// and write /settings, the Reminder tab writes /reminderLog, and Tech Support
+// uses /techSupport + /techSupportCounter - none of these were
 // listed before, and an unlisted path in Realtime Database is DENIED, not
 // allowed. That means:
 //
@@ -12,6 +13,8 @@
 //   * the Share & refer card can't read apkLink, so it falls back
 //   * "Remind all" can't record who sent the round, so the
 //     "Reminder given by ..." line never appears
+//   * Tech Support is completely dead - members can't file a ticket and the
+//     owner's queue stays empty
 //
 // Everything else below is unchanged from what you sent, deliberately. The
 // two apps share these paths, and tightening a rule here would break
@@ -86,6 +89,29 @@
     // NEW - was missing. Single global node recording who sent this month's
     // reminder round: { monthKey, byName, byEmail, atMillis }.
     "reminderLog": {
+      ".read": "auth != null",
+      ".write": "auth != null"
+    },
+
+    // NEW - tech-support tickets. Members file them from their Support tab,
+    // the owner resolves them from Settings.
+    //
+    // The index matters: the member screen queries
+    // orderByChild("memberUid").equalTo(uid) so a member's device only
+    // receives their own tickets. Without ".indexOn" Firebase still returns
+    // the right rows, but downloads the entire node to filter client-side -
+    // which means every member's browser pulls down everyone's ticket text.
+    //
+    // Read has to be granted on the parent (a query cannot be authorised
+    // per-child), so this is the same "any signed-in account" boundary as
+    // every other node here. The narrowing is done by the query, not the rule.
+    "techSupport": {
+      ".read": "auth != null",
+      ".write": "auth != null",
+      ".indexOn": ["memberUid", "status", "createdAtMillis"]
+    },
+
+    "techSupportCounter": {
       ".read": "auth != null",
       ".write": "auth != null"
     },

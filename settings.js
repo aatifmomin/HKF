@@ -20,11 +20,12 @@ import {
   update
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js";
 
-import { firebaseApp } from "./firebase-init.js?v=2026-08-19a";
-import { isOwner } from "./auth.js?v=2026-08-19a";
-import { BUILD_ID } from "./version.js?v=2026-08-19a";
-import { renderAdmins } from "./admins.js?v=2026-08-19a";
-import { DEFAULT_REMINDER_MESSAGE, DEFAULT_CONTACT_MESSAGE } from "./reminder.js?v=2026-08-19a";
+import { firebaseApp } from "./firebase-init.js?v=2026-08-20a";
+import { isOwner } from "./auth.js?v=2026-08-20a";
+import { BUILD_ID } from "./version.js?v=2026-08-20a";
+import { renderAdmins } from "./admins.js?v=2026-08-20a";
+import { renderSupportAdmin } from "./support.js?v=2026-08-20a";
+import { DEFAULT_REMINDER_MESSAGE, DEFAULT_CONTACT_MESSAGE } from "./reminder.js?v=2026-08-20a";
 import {
   pickFiles,
   prepareAttachment,
@@ -32,7 +33,7 @@ import {
   removePaymentQr,
   loadPaymentQr,
   ACCEPT_IMAGES
-} from "./attachments.js?v=2026-08-19a";
+} from "./attachments.js?v=2026-08-20a";
 
 const db = getDatabase(firebaseApp);
 
@@ -88,10 +89,10 @@ export function renderSettings(container, { onBack } = {}) {
     return () => {};
   }
 
-  let adminsTeardown = null;
+  let paneTeardown = null;
 
   function renderMain() {
-    if (adminsTeardown) { adminsTeardown(); adminsTeardown = null; }
+    if (paneTeardown) { paneTeardown(); paneTeardown = null; }
 
     container.innerHTML = `
       <button class="back-link" id="st-back">&larr; Home</button>
@@ -170,6 +171,15 @@ export function renderSettings(container, { onBack } = {}) {
         <div class="settings-label">ADMINS</div>
         <div class="settings-help">Add or remove admins (moved here from the old Admins tab).</div>
         <button class="modal-btn settings-save" id="st-admins">Manage admins</button>
+      </div>
+
+      <div class="settings-section">
+        <div class="settings-label">TECH SUPPORT</div>
+        <div class="settings-help">
+          Issues filed by members from their Support tab. Resolve them here —
+          the outcome shows on the member's ticket instantly.
+        </div>
+        <button class="modal-btn settings-save" id="st-support">View issues</button>
       </div>
 
       <div class="settings-section danger">
@@ -312,6 +322,7 @@ export function renderSettings(container, { onBack } = {}) {
     });
 
     container.querySelector("#st-admins").addEventListener("click", () => renderAdminsPane());
+    container.querySelector("#st-support").addEventListener("click", () => renderSupportPane());
 
     // ---- danger zone ----
 
@@ -352,18 +363,25 @@ export function renderSettings(container, { onBack } = {}) {
   }
 
   function renderAdminsPane() {
-    if (adminsTeardown) { adminsTeardown(); adminsTeardown = null; }
+    if (paneTeardown) { paneTeardown(); paneTeardown = null; }
     container.innerHTML = `
       <button class="back-link" id="ad-back">&larr; Settings</button>
       <div id="admins-host"></div>
     `;
     container.querySelector("#ad-back").addEventListener("click", () => renderMain());
-    adminsTeardown = renderAdmins(container.querySelector("#admins-host"));
+    paneTeardown = renderAdmins(container.querySelector("#admins-host"));
+  }
+
+  /** The ticket queue renders its own back link, so it takes the pane whole. */
+  function renderSupportPane() {
+    if (paneTeardown) { paneTeardown(); paneTeardown = null; }
+    container.innerHTML = "";
+    paneTeardown = renderSupportAdmin(container, { onBack: () => renderMain() });
   }
 
   renderMain();
 
   return function teardown() {
-    if (adminsTeardown) { adminsTeardown(); adminsTeardown = null; }
+    if (paneTeardown) { paneTeardown(); paneTeardown = null; }
   };
 }

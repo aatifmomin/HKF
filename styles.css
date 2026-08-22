@@ -2354,3 +2354,155 @@ a.row-btn {
   color: var(--text-3);
   text-align: center;
 }
+
+/* ============================================================
+   Tech Support tickets
+   ============================================================ */
+
+.ticket-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 4px;
+}
+.ticket-card {
+  background: var(--surface);
+  border: 1px solid rgba(154,106,31,0.12);
+  border-radius: var(--radius-m);
+  padding: 12px 14px;
+  box-shadow: var(--shadow-s);
+}
+.ticket-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.ticket-id {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--gold-dark);
+  flex: none;
+}
+.ticket-title {
+  font-size: 14px;
+  font-weight: 600;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ticket-pill {
+  flex: none;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  padding: 3px 8px;
+  border-radius: 999px;
+}
+.ticket-pill.open     { background: #F8EED7; color: #B37E24; }
+.ticket-pill.resolved { background: #EAF5EC; color: #2E7D32; }
+
+.ticket-resolve-btn {
+  flex: none;
+  font-size: 11px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--gold-dark);
+  border-radius: 999px;
+  padding: 5px 12px;
+}
+.ticket-resolve-btn:hover { filter: brightness(1.08); }
+.ticket-delete {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--red-fg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ticket-delete:hover { background: var(--red-bg); }
+
+.ticket-desc {
+  font-size: 12px;
+  color: var(--text-2);
+  margin-top: 6px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+/* The member list clamps long descriptions; the owner's queue shows them
+   whole, because that's the person who has to act on the detail. */
+.ticket-desc.clamp {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.ticket-meta {
+  font-size: 10px;
+  color: var(--text-3);
+  margin-top: 6px;
+}
+
+.ticket-reopened {
+  margin-top: 8px;
+  padding: 8px;
+  border-radius: var(--radius-s);
+  background: #F8EED7;
+  color: #B37E24;
+  font-size: 11px;
+  line-height: 1.5;
+}
+.ticket-reopened-plain {
+  margin-top: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #B37E24;
+  line-height: 1.5;
+}
+
+.ticket-resolved {
+  margin-top: 8px;
+  padding: 8px;
+  border-radius: var(--radius-s);
+  background: #EAF5EC;
+}
+.ticket-resolved-by {
+  font-size: 11px;
+  font-weight: 600;
+  color: #2E7D32;
+}
+.ticket-resolution-note {
+  font-size: 11px;
+  color: var(--text-2);
+  margin-top: 4px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+.ticket-reopen-btn {
+  margin-top: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--gold-dark);
+  border: 1px solid rgba(154,106,31,0.40);
+  border-radius: 999px;
+  padding: 5px 12px;
+  background: transparent;
+}
+.ticket-reopen-btn:hover { background: rgba(154,106,31,0.08); }
+
+.modal-note {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-2);
+  margin: 0 0 4px;
+}
+
+/* Four member tabs need a touch less padding than three to stay on one line. */
+.bottom-nav .nav-item { min-width: 0; }

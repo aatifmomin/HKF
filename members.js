@@ -30,10 +30,10 @@ import {
   serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js";
 
-import { firebaseApp } from "./firebase-init.js?v=2026-08-19a";
-import { peekNextMemberId, newPendingMemberKey, recalcMemberTotal } from "./members-self.js?v=2026-08-19a";
-import { getSelectedYear, onYearChange } from "./year-state.js?v=2026-08-19a";
-import { viewPaymentProof } from "./attachments.js?v=2026-08-19a";
+import { firebaseApp } from "./firebase-init.js?v=2026-08-20a";
+import { peekNextMemberId, newPendingMemberKey, recalcMemberTotal } from "./members-self.js?v=2026-08-20a";
+import { getSelectedYear, onYearChange } from "./year-state.js?v=2026-08-20a";
+import { viewPaymentProof } from "./attachments.js?v=2026-08-20a";
 
 const db = getDatabase(firebaseApp);
 
@@ -225,7 +225,7 @@ function renderAdminDirectory(container) {
     exportBtn.disabled = true;
     exportBtn.textContent = "Building...";
     try {
-      const mod = await import("./members-export.js?v=2026-08-19a");
+      const mod = await import("./members-export.js?v=2026-08-20a");
       await mod.downloadMembersWorkbook(getSelectedYear());
       window.showSnackbar?.("Members workbook downloaded");
     } catch (e) {

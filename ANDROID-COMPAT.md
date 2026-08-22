@@ -1,10 +1,65 @@
 # Android ↔ Web data contract
 
 The web app is aligned field-by-field with the Android build in
-`scratch 4.zip`, verified against the production RTDB export. Every shape
+`scratch 5.zip`, verified against the production RTDB export. Every shape
 below was checked against real data, not inferred from the Kotlin alone.
 
-## Latest round (scratch 4)
+## Latest round (scratch 5) — Tech Support
+
+Android added a support-ticket system: members file issues from a new
+**Support** tab, the owner works them from a queue inside Settings. Two new
+RTDB nodes, both now written identically by the web.
+
+### `/techSupport/{pushKey}`
+
+| Field | Type | Notes |
+|---|---|---|
+| `ticketId` | string | Human-facing id, `T-001` — zero-padded to 3, keeps growing past 999. |
+| `memberUid` | string | Filer's auth uid. The member list is a query on this, so it needs an index. |
+| `memberName` | string | Display name at filing time, snapshotted (not re-read later). |
+| `memberEmail` | string | Same. |
+| `title` | string | Required — an empty title is not filed. |
+| `description` | string | Optional, free text. |
+| `status` | string | `"OPEN"` or `"RESOLVED"` — exact casing, compared as a string on both sides. |
+| `createdAtMillis` | long | Client clock, `Date.now()`. Sorting key everywhere. |
+| `resolvedAtMillis` | long | `0` until resolved. |
+| `resolvedByName` | string | Owner's display name, falling back to the part of their email before `@` — Android stores a name, never an email. |
+| `resolutionNote` | string | Optional note the owner leaves when resolving. |
+| `reopenNote` | string | Optional note the member leaves when reopening. |
+| `reopenedAtMillis` | long | `0` until reopened. |
+
+Every field is always written on create, including the empty ones. Android's
+`TechSupportTicket` is a Kotlin data class with non-null defaults; a missing
+key deserializes fine, but writing them all keeps the two clients' rows
+byte-comparable in the console.
+
+**Reopen keeps the resolution.** Reopening sets `status` back to `OPEN` and
+stamps `reopenNote` / `reopenedAtMillis`, but leaves `resolvedAtMillis`,
+`resolvedByName` and `resolutionNote` in place, so both clients can still show
+"resolved by X, then reopened". Resolving again overwrites the resolution
+fields and the reopen note stays as history.
+
+### `/techSupportCounter`
+
+A **bare number**, same shape as `handoversCounter` — not an object. `T-004`
+means the counter reads 4.
+
+Android reads it, adds one, writes it back. The web uses `runTransaction`
+instead, so two members filing at the same moment can't be handed the same
+ticket id. The stored value is identical either way; this is a concurrency
+fix, not a schema change, and it is safe to mix clients.
+
+### Where it appears
+
+- **Member**: a fourth tab, **Support**, next to Home / Payments / Profile.
+  Lists only that member's tickets (`orderByChild("memberUid").equalTo(uid)`),
+  newest first, with a search box and open/resolved counts.
+- **Owner**: Settings → **TECH SUPPORT** opens the full queue — every ticket
+  from every member, **open first, newest-first within each group**. Resolve,
+  delete, and the filer's name/date on each card.
+- Only the owner (`/owner_email`) sees the queue; ordinary admins do not.
+
+## Previous round (scratch 4)
 
 New or changed contracts, all now mirrored:
 
@@ -188,10 +243,17 @@ really is.
 
 ## Rules
 
-`database.rules.json` is your rule set with two nodes added: **`/settings` and
-`/reminderLog` were missing**, and an unlisted path in Realtime Database is
-denied. Until you publish it, Settings → Save silently fails on both clients,
-the share card can't read `apkLink`, and "Reminder given by …" never appears.
+`database.rules.json` is your rule set with **four** nodes added: `/settings`,
+`/reminderLog`, `/techSupport` and `/techSupportCounter` were all missing, and
+an unlisted path in Realtime Database is denied. Until you publish it,
+Settings → Save silently fails on both clients, the share card can't read
+`apkLink`, "Reminder given by …" never appears, and Tech Support is completely
+dead — members can't file a ticket and the owner's queue stays empty.
+
+`/techSupport` carries `".indexOn": ["memberUid", "status", "createdAtMillis"]`.
+Without `memberUid` at least, the member's own ticket list falls back to a
+client-side sort over the whole node and Firebase logs a warning on both
+clients.
 The `joinRequests` index also named `requestedAtMillis` — which is correct and
 now matches what both clients write.
 
