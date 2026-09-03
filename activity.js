@@ -32,8 +32,8 @@ import {
   serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js";
 
-import { firebaseApp } from "./firebase-init.js?v=2026-08-20a";
-import { isOwner, displayNameFor } from "./auth.js?v=2026-08-20a";
+import { firebaseApp } from "./firebase-init.js?v=2026-09-02a";
+import { isOwner, displayNameFor } from "./auth.js?v=2026-09-02a";
 import {
   approveJoinRequest,
   declineJoinRequest,
@@ -41,13 +41,41 @@ import {
   recalcMemberTotal,
   JOIN_PENDING,
   JOIN_APPROVED
-} from "./members-self.js?v=2026-08-20a";
-import { viewPaymentProof } from "./attachments.js?v=2026-08-20a";
-import { nextNMonths } from "./year-state.js?v=2026-08-20a";
+} from "./members-self.js?v=2026-09-02a";
+import { viewPaymentProof } from "./attachments.js?v=2026-09-02a";
+import { nextNMonths } from "./year-state.js?v=2026-09-02a";
+import { HKF_DIRECT_UID } from "./collectors.js?v=2026-09-02a";
 
 const db = getDatabase(firebaseApp);
 
 const MONTH_LABELS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+
+/**
+ * Timestamp of the newest item still awaiting a decision, across payment
+ * requests and join requests. Drives the red dot on the Activity tab — the
+ * web equivalent of Android's WidgetSyncBridge.newestPendingMillis.
+ */
+export function observeNewestPending(callback) {
+  let reqNewest = 0;
+  let joinNewest = 0;
+  const emit = () => callback(Math.max(reqNewest, joinNewest));
+
+  const newestOf = (val, isPending, stamp) => Object.values(val || {})
+    .filter(isPending)
+    .reduce((m, r) => Math.max(m, Number(stamp(r)) || 0), 0);
+
+  const unsubReq = onValue(ref(db, "paymentRequests"), snap => {
+    reqNewest = newestOf(snap.val(), r => statusOf(r) === "pending", r => r.createdAtMillis);
+    emit();
+  }, () => { reqNewest = 0; emit(); });
+
+  const unsubJoin = onValue(ref(db, "joinRequests"), snap => {
+    joinNewest = newestOf(snap.val(), r => statusOf(r) === JOIN_PENDING, r => r.requestedAtMillis);
+    emit();
+  }, () => { joinNewest = 0; emit(); });
+
+  return function teardown() { unsubReq(); unsubJoin(); };
+}
 
 function formatRupees(minor) {
   if (!minor || minor <= 0) return "₹0";
@@ -93,6 +121,20 @@ function escapeHtml(s) {
 
 function nameBeforeAt(email) {
   return String(email || "").split("@")[0];
+}
+
+/**
+ * Collector rule: only the admin the member actually paid may confirm the
+ * money arrived — nobody else can vouch for cash landing in someone else's
+ * account. The owner overrides, and a request with no named collector
+ * (legacy rows, or "HKF bank account (direct)") stays open to every admin,
+ * which is what kept old data workable when Android shipped this.
+ */
+function canDecideRequest(rec, viewerIsOwner, viewerUid) {
+  if (viewerIsOwner) return true;
+  const c = String(rec?.collectorUid || "");
+  if (!c || c === HKF_DIRECT_UID) return true;
+  return c === viewerUid;
 }
 
 /** Android compares request/handover status case-insensitively. */
@@ -255,7 +297,7 @@ export function renderActivity(container) {
       return;
     }
 
-    rowsEl.innerHTML = visible.map(c => renderCard(c, viewerIsOwner, busyKeys)).join("");
+    rowsEl.innerHTML = visible.map(c => renderCard(c, viewerIsOwner, busyKeys, user?.uid || "")).join("");
   }
 
   // One delegated listener, so a live database echo mid-click can't leave a
@@ -369,11 +411,11 @@ function confirmDelete(kind) {
 
 // ---------------- Card rendering ----------------
 
-function renderCard(card, viewerIsOwner, busyKeys) {
+function renderCard(card, viewerIsOwner, busyKeys, viewerUid) {
   const stateClass = card.pending ? "activity-card pending" : "activity-card decided";
   const busy = act => busyKeys.has(act + ":" + card.key);
 
-  if (card.type === "request") return renderRequestCard(card, stateClass, viewerIsOwner, busy);
+  if (card.type === "request") return renderRequestCard(card, stateClass, viewerIsOwner, busy, viewerUid);
   if (card.type === "handover") return renderHandoverCard(card, stateClass, viewerIsOwner, busy);
   return renderJoinCard(card, stateClass, viewerIsOwner, busy);
 }
@@ -409,7 +451,7 @@ function decidedBy(rec) {
   return by ? `<span class="activity-decided-by">by ${escapeHtml(by)}</span>` : "";
 }
 
-function renderRequestCard(card, stateClass, viewerIsOwner, busy) {
+function renderRequestCard(card, stateClass, viewerIsOwner, busy, viewerUid) {
   const r = card.data;
   const who = r.memberName || nameBeforeAt(r.memberEmail) || "Member";
   const status = statusOf(r);
@@ -422,7 +464,9 @@ function renderRequestCard(card, stateClass, viewerIsOwner, busy) {
     : "";
 
   let actions = "";
-  if (card.pending) {
+  if (card.pending && !canDecideRequest(r, viewerIsOwner, viewerUid)) {
+    actions = `<span class="activity-waiting">Awaiting ${escapeHtml(r.collectorName || "the collector")} — only they (or the owner) can confirm this money arrived.</span>`;
+  } else if (card.pending) {
     actions = `
       <button class="activity-btn primary" data-act="req-approve" data-key="${escapeHtml(card.key)}" ${busy("req-approve") ? "disabled" : ""}>
         ${busy("req-approve") ? "Working..." : "Approve"}
@@ -447,6 +491,9 @@ function renderRequestCard(card, stateClass, viewerIsOwner, busy) {
     : monthLabel(r.coversMonthKey);
   const detail = [formatRupees(r.amountMinor), span];
   if (r.category) detail.push(r.category);
+  const paidToLine = r.collectorName
+    ? `<span class="activity-paid-to">Paid to: ${escapeHtml(r.collectorName)}</span>`
+    : "";
 
   return cardShell({
     stateClass,
@@ -459,6 +506,7 @@ function renderRequestCard(card, stateClass, viewerIsOwner, busy) {
     actions,
     metaLines: [
       escapeHtml(detail.join(" · ")),
+      paidToLine,
       escapeHtml(r.memberEmail || ""),
       proofLine
     ]
@@ -588,7 +636,11 @@ async function approvePaymentRequest(req, actor, force = false) {
         note: monthCount === 1 ? "Approved request" : `Approved request (${i + 1}/${monthCount})`,
         batchKey: paymentRef.key,
         recordedByEmail: actor?.email || "",
-        recordedAtMillis: Date.now()
+        recordedAtMillis: Date.now(),
+        // Carries the money trail from the request onto the payment row —
+        // this is what the collector dashboard's "received" figure sums.
+        collectorUid: req.collectorUid || "",
+        collectorName: req.collectorName || ""
       });
       await recalcMemberTotal(req.memberUid);
       createdKeys.push(paymentRef.key);

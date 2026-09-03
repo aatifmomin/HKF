@@ -5,12 +5,16 @@
 // it (it used to be its own tab).
 //
 // Everything here writes to /settings, which both clients read:
-//   apkLink           - the download link printed on the Share & refer card
+//   apkLink           - the Android APK download link, shared with the card
+//   websiteLink       - the public site, shared alongside the app link
+//   bankDetails       - the foundation's own account, for "pay HKF directly"
 //   upiId / upiName   - powers the member's tap-to-pay button
 //   paymentQr         - { name, base64 }, the QR image members scan
 //   reminderDay       - 1-28, or 0 for off
 //   reminderText      - the SMS / banner message for unpaid members
 //   updateContactText - the nudge shown to members with no contact number
+//   appLatestVersion / appUpdateNotes / appUpdateEnabled
+//                     - the Android update card shown on everyone's Home
 
 import {
   getDatabase,
@@ -20,12 +24,22 @@ import {
   update
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js";
 
-import { firebaseApp } from "./firebase-init.js?v=2026-08-20a";
-import { isOwner } from "./auth.js?v=2026-08-20a";
-import { BUILD_ID } from "./version.js?v=2026-08-20a";
-import { renderAdmins } from "./admins.js?v=2026-08-20a";
-import { renderSupportAdmin } from "./support.js?v=2026-08-20a";
-import { DEFAULT_REMINDER_MESSAGE, DEFAULT_CONTACT_MESSAGE } from "./reminder.js?v=2026-08-20a";
+import { firebaseApp } from "./firebase-init.js?v=2026-09-02a";
+import { isOwner } from "./auth.js?v=2026-09-02a";
+import { BUILD_ID } from "./version.js?v=2026-09-02a";
+import { renderAdmins } from "./admins.js?v=2026-09-02a";
+import { renderSupportAdmin } from "./support.js?v=2026-09-02a";
+import {
+  discoverYears,
+  sliceYear,
+  toBackupJson,
+  parseBackup,
+  restore,
+  resetSlice,
+  deletePaths,
+  recomputeAllMemberTotals
+} from "./year-data.js?v=2026-09-02a";
+import { DEFAULT_REMINDER_MESSAGE, DEFAULT_CONTACT_MESSAGE } from "./reminder.js?v=2026-09-02a";
 import {
   pickFiles,
   prepareAttachment,
@@ -33,7 +47,7 @@ import {
   removePaymentQr,
   loadPaymentQr,
   ACCEPT_IMAGES
-} from "./attachments.js?v=2026-08-20a";
+} from "./attachments.js?v=2026-09-02a";
 
 const db = getDatabase(firebaseApp);
 
@@ -105,21 +119,31 @@ export function renderSettings(container, { onBack } = {}) {
 
       <div class="settings-section">
         <div class="settings-label">SHARE &amp; REFER LINK</div>
-        <div class="settings-help">Download link shown on the share card and in the share text.</div>
+        <div class="settings-help">Both links go out with every member's share card.</div>
         <label class="field">
           <span>APK / app link</span>
           <input type="text" id="st-apk" placeholder="https://..." />
         </label>
-        <button class="modal-btn primary settings-save" id="st-save-apk">Save link</button>
+        <label class="field">
+          <span>Website link</span>
+          <input type="text" id="st-website" placeholder="https://hasnainkarimain.org" />
+        </label>
+        <button class="modal-btn primary settings-save" id="st-save-apk">Save links</button>
       </div>
 
       <div class="settings-section">
-        <div class="settings-label">BANK QR &amp; UPI</div>
+        <div class="settings-label">FOUNDATION ACCOUNT (PAY HKF DIRECTLY)</div>
         <div class="settings-help">
-          Members see this QR at the top of their Home tab. The UPI ID powers
-          tap-to-pay: opening the QR offers their installed UPI apps (GPay,
-          PhonePe, Cred, Paytm...). No amount is pre-filled — the member types it.
+          Members can pay a collector admin — each admin sets their own QR in
+          My Collections — or pay the foundation directly using the details
+          below. Bank details are shown with tap-to-copy; the UPI ID and QR are
+          optional and enable tap-to-pay. No amount is ever pre-filled.
         </div>
+        <label class="field">
+          <span>Bank details (name, account no., IFSC, bank)</span>
+          <textarea id="st-bank" rows="4"></textarea>
+        </label>
+        <button class="modal-btn primary settings-save" id="st-save-bank">Save bank details</button>
         <label class="field">
           <span>UPI ID</span>
           <input type="text" id="st-upi-id" placeholder="e.g. name@okhdfcbank" />
@@ -182,11 +206,54 @@ export function renderSettings(container, { onBack } = {}) {
         <button class="modal-btn settings-save" id="st-support">View issues</button>
       </div>
 
+      <div class="settings-section">
+        <div class="settings-label">ANDROID APP VERSION &amp; UPDATE</div>
+        <div class="settings-help">
+          Upload the new APK to the app link above, enter the version and
+          what's new, and switch this on — an update card appears at the bottom
+          of everyone's Home with a download button. Switch off to hide it.
+          Nothing is ever blocked; members update manually. The website itself
+          always serves the newest build, so this card is about the phone app.
+        </div>
+        <label class="field">
+          <span>Latest version (e.g. 1.1)</span>
+          <input type="text" id="st-app-version" placeholder="1.1" />
+        </label>
+        <label class="field">
+          <span>What's new (optional)</span>
+          <textarea id="st-app-notes" rows="2"></textarea>
+        </label>
+        <label class="toggle-field">
+          <span class="toggle-text">
+            <span class="toggle-title">Show update on dashboards</span>
+            <span class="toggle-sub" id="st-app-state">Hidden</span>
+          </span>
+          <input type="checkbox" id="st-app-enabled" />
+        </label>
+        <button class="modal-btn primary settings-save" id="st-save-app">Save update info</button>
+      </div>
+
+      <div class="settings-section">
+        <div class="settings-label">RESET &middot; BACKUP &middot; RESTORE (BY YEAR)</div>
+        <div class="settings-help">
+          Year-wise data management: payments, requests with proofs, handovers
+          with documents, and collector transfers. Members, admins, collector
+          profiles and settings are never touched.
+        </div>
+        <div class="coll-actions">
+          <button class="modal-btn settings-save" id="st-backup">Backup year…</button>
+          <button class="modal-btn settings-save" id="st-restore">Restore…</button>
+        </div>
+        <button class="modal-btn destructive settings-save" id="st-reset">Reset year…</button>
+        <div class="settings-help" id="st-year-busy"></div>
+      </div>
+
       <div class="settings-section danger">
         <div class="settings-label">DANGER ZONE</div>
         <div class="settings-help">
           Each button permanently deletes that entire section from the database.
-          There is no undo — export a JSON backup from the Firebase Console first.
+          There is no undo — take a Backup year… above first, or export from the
+          Firebase Console.
         </div>
         ${WIPES.map(w => `
           <button class="modal-btn destructive settings-save" data-wipe="${w.id}">${escapeHtml(w.button)}</button>
@@ -201,12 +268,18 @@ export function renderSettings(container, { onBack } = {}) {
     `;
 
     const apkEl = container.querySelector("#st-apk");
+    const websiteEl = container.querySelector("#st-website");
+    const bankEl = container.querySelector("#st-bank");
+    const appVersionEl = container.querySelector("#st-app-version");
+    const appNotesEl = container.querySelector("#st-app-notes");
+    const appEnabledEl = container.querySelector("#st-app-enabled");
     const upiIdEl = container.querySelector("#st-upi-id");
     const upiNameEl = container.querySelector("#st-upi-name");
     const dayEl = container.querySelector("#st-day");
     const textEl = container.querySelector("#st-text");
     const contactTextEl = container.querySelector("#st-contact-text");
-    const inputs = [apkEl, upiIdEl, upiNameEl, dayEl, textEl, contactTextEl];
+    const inputs = [apkEl, websiteEl, bankEl, upiIdEl, upiNameEl, dayEl, textEl,
+                    contactTextEl, appVersionEl, appNotesEl, appEnabledEl];
     inputs.forEach(el => { el.disabled = true; });
 
     // Load current values. Fields stay disabled until we know them, so a slow
@@ -214,6 +287,12 @@ export function renderSettings(container, { onBack } = {}) {
     get(ref(db, "settings")).then(snap => {
       const v = snap.val() || {};
       apkEl.value = v.apkLink || "";
+      websiteEl.value = v.websiteLink || "";
+      bankEl.value = v.bankDetails || "";
+      appVersionEl.value = v.appLatestVersion || "";
+      appNotesEl.value = v.appUpdateNotes || "";
+      appEnabledEl.checked = v.appUpdateEnabled === true;
+      refreshAppState();
       upiIdEl.value = v.upiId || "";
       upiNameEl.value = v.upiName || "";
       const day = Number(v.reminderDay) || 0;
@@ -238,10 +317,41 @@ export function renderSettings(container, { onBack } = {}) {
 
     container.querySelector("#st-save-apk").addEventListener("click", async e => {
       await saving(e.currentTarget, async () => {
-        await set(ref(db, "settings/apkLink"), apkEl.value.trim());
-        window.showSnackbar?.("Link saved");
+        await update(ref(db, "settings"), {
+          apkLink: apkEl.value.trim(),
+          websiteLink: websiteEl.value.trim()
+        });
+        window.showSnackbar?.("Links saved");
       });
     });
+
+    container.querySelector("#st-save-bank").addEventListener("click", async e => {
+      await saving(e.currentTarget, async () => {
+        await set(ref(db, "settings/bankDetails"), bankEl.value.trim());
+        window.showSnackbar?.("Bank details saved");
+      });
+    });
+
+    function refreshAppState() {
+      container.querySelector("#st-app-state").textContent =
+        appEnabledEl.checked ? "Visible to all members and admins" : "Hidden";
+    }
+    appEnabledEl.addEventListener("change", refreshAppState);
+
+    container.querySelector("#st-save-app").addEventListener("click", async e => {
+      await saving(e.currentTarget, async () => {
+        await update(ref(db, "settings"), {
+          appLatestVersion: appVersionEl.value.trim(),
+          appUpdateNotes: appNotesEl.value.trim(),
+          appUpdateEnabled: appEnabledEl.checked
+        });
+        window.showSnackbar?.(appEnabledEl.checked
+          ? "Saved — update card is live"
+          : "Saved — update card hidden");
+      });
+    });
+
+    wireYearData();
 
     container.querySelector("#st-save-upi").addEventListener("click", async e => {
       await saving(e.currentTarget, async () => {
@@ -345,6 +455,156 @@ export function renderSettings(container, { onBack } = {}) {
           btn.textContent = original;
         }
       });
+    });
+  }
+
+  /**
+   * Year backup / restore / reset. Android reads and writes real files
+   * through the storage-access framework; the browser downloads a Blob and
+   * takes an <input type=file> back. The JSON is byte-identical, so a backup
+   * taken on the phone restores from the web and vice versa.
+   */
+  function wireYearData() {
+    const busyEl = container.querySelector("#st-year-busy");
+    const setBusy = t => { busyEl.textContent = t || ""; };
+
+    async function pickYear(title) {
+      setBusy("Finding years…");
+      const years = await discoverYears();
+      setBusy("");
+      if (!years.length) { window.showSnackbar?.("No year data found"); return null; }
+      return new Promise(resolve => {
+        const dialog = document.createElement("div");
+        dialog.className = "modal-overlay";
+        dialog.innerHTML = `
+          <div class="modal">
+            <div class="modal-title">${escapeHtml(title)}</div>
+            <div class="modal-body">
+              ${years.map(y => `<button class="choice-row" type="button" data-year="${y}">
+                <span class="choice-text"><span class="choice-title">${y}</span></span>
+                <span class="choice-caret">&rsaquo;</span>
+              </button>`).join("")}
+            </div>
+            <div class="modal-actions"><button class="modal-btn" id="yp-cancel">Cancel</button></div>
+          </div>`;
+        document.body.appendChild(dialog);
+        const close = value => { document.body.removeChild(dialog); resolve(value); };
+        dialog.querySelector("#yp-cancel").addEventListener("click", () => close(null));
+        dialog.addEventListener("click", e => { if (e.target === dialog) close(null); });
+        dialog.querySelectorAll("[data-year]").forEach(btn => {
+          btn.addEventListener("click", () => close(parseInt(btn.dataset.year, 10)));
+        });
+      });
+    }
+
+    container.querySelector("#st-backup").addEventListener("click", async () => {
+      const year = await pickYear("Backup which year?");
+      if (!year) return;
+      setBusy("Collecting " + year + " data…");
+      try {
+        const slice = await sliceYear(year);
+        if (slice.totalCount === 0) { window.showSnackbar?.("No data found for " + year); return; }
+        const json = JSON.stringify(toBackupJson(year, slice));
+        const url = URL.createObjectURL(new Blob([json], { type: "application/json" }));
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "hkf-backup-" + year + ".json";
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 10000);
+        window.showSnackbar?.(`Backup saved — ${slice.totalCount} records from ${year}`);
+      } catch (e) {
+        window.showSnackbar?.("Backup failed: " + (e.message || "error"));
+      } finally {
+        setBusy("");
+      }
+    });
+
+    container.querySelector("#st-restore").addEventListener("click", async () => {
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = "application/json,.json";
+      input.style.position = "fixed";
+      input.style.left = "-9999px";
+      document.body.appendChild(input);
+      input.addEventListener("change", async () => {
+        const file = input.files?.[0];
+        input.remove();
+        if (!file) return;
+        setBusy("Reading backup file…");
+        let parsed;
+        try {
+          parsed = parseBackup(JSON.parse(await file.text()));
+        } catch (e) {
+          setBusy("");
+          window.showSnackbar?.("Not a valid HKF backup: " + (e.message || "unreadable file"));
+          return;
+        }
+        setBusy("");
+        const count = Object.keys(parsed.paths).length;
+        const ok = confirm(
+          `Restore ${parsed.year} data?\n\n${count} records from the backup of ` +
+          `${parsed.year} will be written back. Existing entries with the same IDs ` +
+          `are overwritten; everything else stays untouched.`
+        );
+        if (!ok) return;
+        setBusy("Restoring " + parsed.year + "…");
+        try {
+          const n = await restore(parsed.paths);
+          setBusy("Recalculating member totals…");
+          await recomputeAllMemberTotals();
+          window.showSnackbar?.(`Restored ${n} records for ${parsed.year}`);
+        } catch (e) {
+          window.showSnackbar?.("Restore failed: " + (e.message || "error"));
+        } finally {
+          setBusy("");
+        }
+      });
+      input.click();
+    });
+
+    container.querySelector("#st-reset").addEventListener("click", async () => {
+      const year = await pickYear("Reset which year?");
+      if (!year) return;
+      setBusy("Collecting " + year + " data…");
+      let slice;
+      try {
+        slice = await resetSlice(year);
+      } catch (e) {
+        setBusy("");
+        window.showSnackbar?.("Couldn't read the data: " + (e.message || "error"));
+        return;
+      }
+      setBusy("");
+      if (slice.totalCount === 0) { window.showSnackbar?.("Nothing to reset"); return; }
+
+      // Reset is wider than backup on purpose (Android's own definition):
+      // that year's payments, but ALL handovers and ALL activity. Spell it
+      // out, then make them type the year — this is the one action here with
+      // no undo and no backup implied.
+      const typed = prompt(
+        `Delete ALL ${year} data?\n\n` +
+        `This will permanently delete: ${slice.paymentCount} payments of ${year}, ` +
+        `ALL ${slice.handoverCount} handovers with their documents (numbering ` +
+        `restarts at H-001), and ALL activity — ${slice.requestCount} payment ` +
+        `requests with ${slice.proofCount} proofs and ${slice.joinCount} join ` +
+        `requests. Members and other years' payments stay. Take a backup first. ` +
+        `There is no undo.\n\nType ${year} to confirm:`
+      );
+      if (String(typed || "").trim() !== String(year)) {
+        if (typed !== null) window.showSnackbar?.("Reset cancelled — the year didn't match");
+        return;
+      }
+      setBusy("Deleting " + year + "…");
+      try {
+        const n = await deletePaths(slice.paths);
+        setBusy("Recalculating member totals…");
+        await recomputeAllMemberTotals();
+        window.showSnackbar?.(`Reset done (${n} records removed)`);
+      } catch (e) {
+        window.showSnackbar?.("Delete failed: " + (e.message || "error"));
+      } finally {
+        setBusy("");
+      }
     });
   }
 

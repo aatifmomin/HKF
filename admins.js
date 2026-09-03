@@ -18,9 +18,10 @@ import {
   serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js";
 
-import { firebaseApp } from "./firebase-init.js?v=2026-08-20a";
-import { isOwner } from "./auth.js?v=2026-08-20a";
-import { OWNER_EMAIL } from "./firebase-config.js?v=2026-08-20a";
+import { firebaseApp } from "./firebase-init.js?v=2026-09-02a";
+import { outstandingBalanceForEmail } from "./collectors.js?v=2026-09-02a";
+import { isOwner } from "./auth.js?v=2026-09-02a";
+import { OWNER_EMAIL } from "./firebase-config.js?v=2026-09-02a";
 
 const db = getDatabase(firebaseApp);
 
@@ -125,6 +126,27 @@ export function renderAdmins(container) {
 async function confirmRemoveAdmin(admin) {
   const email = admin.email || admin.emailLower || "(unknown)";
   if (!confirm("Remove " + email + " as admin? They'll remain a member but lose admin access.")) return;
+
+  // Collector guard: an admin still holding foundation money — collections
+  // they've approved but not yet transferred to HKF — cannot be removed, or
+  // that money trail is orphaned. Settle the transfer first.
+  try {
+    const outstanding = await outstandingBalanceForEmail(email);
+    if (outstanding > 0) {
+      window.showSnackbar?.(
+        "Can't remove: " + email + " still holds ₹" +
+        Math.trunc(outstanding / 100).toLocaleString("en-IN") +
+        " of collections. Settle the transfer to HKF first."
+      );
+      return;
+    }
+  } catch (e) {
+    // A failed check must not silently allow the removal it was guarding.
+    console.error("collector balance check failed", e);
+    window.showSnackbar?.("Couldn't check their collection balance — try again");
+    return;
+  }
+
   try {
     await fbRemove(ref(db, "admins/" + admin.key));
     window.showSnackbar?.("Admin removed");

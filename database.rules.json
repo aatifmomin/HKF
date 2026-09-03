@@ -3,23 +3,28 @@
 // Paste into Firebase Console > Realtime Database > Rules, then Publish.
 // (The console accepts these // comments; a strict JSON parser will not.)
 //
-// This is YOUR existing rule set with FOUR nodes added. Both clients now read
-// and write /settings, the Reminder tab writes /reminderLog, and Tech Support
-// uses /techSupport + /techSupportCounter - none of these were
-// listed before, and an unlisted path in Realtime Database is DENIED, not
-// allowed. That means:
+// This is the rule set you sent on 2 Sep, unchanged except for INDEXES. You
+// had already added /settings, /reminderLog, /techSupport,
+// /techSupportCounter, /announcements, /collectors and /collectorTransfers -
+// thank you, that was the blocker from the last three rounds and it is gone.
 //
-//   * Settings > Save link / Save reminder silently fails on both clients
-//   * the Share & refer card can't read apkLink, so it falls back
-//   * "Remind all" can't record who sent the round, so the
-//     "Reminder given by ..." line never appears
-//   * Tech Support is completely dead - members can't file a ticket and the
-//     owner's queue stays empty
+// What is added here, and only this:
 //
-// Everything else below is unchanged from what you sent, deliberately. The
-// two apps share these paths, and tightening a rule here would break
-// whichever client happens to write it a different way. See the note at the
-// bottom for what this rule set does and does not enforce.
+//   /techSupport         .indexOn memberUid, status, createdAtMillis
+//   /collectorTransfers  .indexOn collectorUid, transferredAtMillis
+//   /announcements       .indexOn postedAtMillis
+//
+// A missing index is not a permission error, so nothing breaks without them.
+// What happens instead is that Firebase downloads the WHOLE node to the phone
+// or browser and sorts it there, and logs "Consider adding .indexOn" to the
+// console on both clients. The member's own ticket list is the one that
+// actually queries the server (orderByChild("memberUid").equalTo(uid)), so
+// that index is the one worth having as the ticket table grows.
+//
+// Everything else below is exactly what you sent. The two apps share these
+// paths, and tightening a rule here would break whichever client happens to
+// write it a different way. See the note at the bottom for what this rule set
+// does and does not enforce.
 
 {
   "rules": {
@@ -28,6 +33,10 @@
       ".write": false
     },
     "admins": {
+      ".read": "auth != null",
+      ".write": "auth != null && auth.token.email == root.child('owner_email').val()"
+    },
+    "settings": {
       ".read": "auth != null",
       ".write": "auth != null && auth.token.email == root.child('owner_email').val()"
     },
@@ -54,15 +63,11 @@
       ".read": "auth != null",
       ".write": "auth != null"
     },
-
-    // Keyed by auth uid. requestedAtMillis is the timestamp both clients
-    // write - the index previously named a field that does not exist.
     "joinRequests": {
       ".read": "auth != null",
       ".write": "auth != null",
       ".indexOn": ["status", "requestedAtMillis"]
     },
-
     "handovers": {
       ".read": "auth != null",
       ".write": "auth != null",
@@ -76,65 +81,48 @@
       ".read": "auth != null",
       ".write": "auth != null"
     },
-
-    // NEW - was missing, so every write was being rejected.
-    // apkLink / reminderDay / reminderText. Read by everyone (the share card
-    // and the member reminder banner need it); the owner-only restriction on
-    // writing is enforced in the UI on both clients, like the other nodes.
-    "settings": {
-      ".read": "auth != null",
-      ".write": "auth != null"
-    },
-
-    // NEW - was missing. Single global node recording who sent this month's
-    // reminder round: { monthKey, byName, byEmail, atMillis }.
-    "reminderLog": {
-      ".read": "auth != null",
-      ".write": "auth != null"
-    },
-
-    // NEW - tech-support tickets. Members file them from their Support tab,
-    // the owner resolves them from Settings.
-    //
-    // The index matters: the member screen queries
-    // orderByChild("memberUid").equalTo(uid) so a member's device only
-    // receives their own tickets. Without ".indexOn" Firebase still returns
-    // the right rows, but downloads the entire node to filter client-side -
-    // which means every member's browser pulls down everyone's ticket text.
-    //
-    // Read has to be granted on the parent (a query cannot be authorised
-    // per-child), so this is the same "any signed-in account" boundary as
-    // every other node here. The narrowing is done by the query, not the rule.
     "techSupport": {
       ".read": "auth != null",
       ".write": "auth != null",
       ".indexOn": ["memberUid", "status", "createdAtMillis"]
     },
-
     "techSupportCounter": {
       ".read": "auth != null",
       ".write": "auth != null"
     },
-
-    "notifications": {
-      "$uid": {
-        ".read": "auth != null && auth.uid == $uid",
-        ".write": "auth != null"
-      }
+    "reminderLog": {
+      ".read": "auth != null",
+      ".write": "auth != null"
+    },
+    "announcements": {
+      ".read": "auth != null",
+      ".write": "auth != null",
+      ".indexOn": ["postedAtMillis"]
+    },
+    "collectors": {
+      ".read": "auth != null",
+      ".write": "auth != null"
+    },
+    "collectorTransfers": {
+      ".read": "auth != null",
+      ".write": "auth != null",
+      ".indexOn": ["collectorUid", "transferredAtMillis"]
     }
 
-    // Legacy: /messages and /presence are not listed, so they are already
-    // denied. The group chat is gone from both clients; once you're happy
-    // with this build you can delete those two nodes from the database.
+    // Legacy: /messages, /presence and /notifications are not listed, so they
+    // are already denied. The group chat is gone from both clients; once
+    // you're happy with this build you can delete those nodes from the
+    // database.
   }
 }
 
 // WHAT THIS RULE SET DOES AND DOESN'T ENFORCE
 //
-// Only /admins is genuinely locked down (owner email, checked server-side
-// against /owner_email). Everywhere else, any signed-in Google account can
-// write. In particular a signed-in non-member could, in principle, write
-// /members/{their own uid} and skip the join queue.
+// /admins and /settings are genuinely locked down: both require the owner
+// email, checked server-side against /owner_email. Everywhere else, any
+// signed-in Google account can write. In particular a signed-in non-member
+// could, in principle, write /members/{their own uid} and skip the join
+// queue.
 //
 // That is not an oversight to fix casually. Realtime Database rules have no
 // queries, so "is this email in /admins?" cannot be expressed - /admins is
@@ -152,3 +140,25 @@
 // pre-registration claim writes /members/{uid} for someone who is not yet a
 // member by definition. Tighten that node and those flows break. Leave it as
 // it is unless both clients change together.
+//
+// TWO NEW NODES WORTH KNOWING ABOUT
+//
+// /collectors/{uid} is written by that admin about themselves, but the rule
+// above lets any signed-in account write any collector's profile - including
+// their QR. Both clients only ever write their own uid, so this is a
+// theoretical hole rather than a live one, and it is the one node here where
+// a tighter rule costs nothing at all:
+//
+//     "collectors": {
+//       ".read": "auth != null",
+//       "$uid": { ".write": "auth != null && auth.uid == $uid" }
+//     }
+//
+// That is safe to adopt today - neither client writes another admin's
+// profile. Do it when you next touch these rules.
+//
+// /collectorTransfers is the money trail: an admin records what they moved to
+// the foundation. It has to stay writable by any admin (they record their
+// own) and deletable (a mistyped amount is deleted, not disputed), so it
+// cannot be tightened the same way. The owner's view in My Collections is
+// what makes it accountable, not the rules.

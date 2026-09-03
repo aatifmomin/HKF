@@ -22,16 +22,20 @@ import {
   get
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js";
 
-import { firebaseApp } from "./firebase-init.js?v=2026-08-20a";
+import { firebaseApp } from "./firebase-init.js?v=2026-09-02a";
 
 const db = getDatabase(firebaseApp);
 
-async function fetchApkLink() {
+async function fetchLinks() {
   try {
-    const snap = await get(ref(db, "settings/apkLink"));
-    return String(snap.val() || "").trim();
+    const snap = await get(ref(db, "settings"));
+    const v = snap.val() || {};
+    return {
+      apkLink: String(v.apkLink || "").trim(),
+      websiteLink: String(v.websiteLink || "").trim()
+    };
   } catch {
-    return "";
+    return { apkLink: "", websiteLink: "" };
   }
 }
 
@@ -49,11 +53,6 @@ function fallbackUrl() {
   // Trim index.html so the printed link stays short and typeable.
   const path = pathname.replace(/index\.html$/i, "");
   return (origin + path).replace(/\/$/, "");
-}
-
-/** Strip the scheme so the link reads as a domain on the card. */
-function prettyUrl(url) {
-  return url.replace(/^https?:\/\//i, "");
 }
 
 function formatRupees(minor) {
@@ -211,21 +210,10 @@ async function drawCard(stats, url) {
     color: "rgba(247,241,230,0.82)"
   });
 
-  // Link chip
-  const shown = prettyUrl(url);
-  ctx.font = "600 34px -apple-system, Segoe UI, Helvetica, sans-serif";
-  const urlW = ctx.measureText(shown).width;
-  const chipW = Math.min(W - 160, urlW + 90);
-  const chipX = (W - chipW) / 2;
-  const chipGrad = ctx.createLinearGradient(chipX, 0, chipX + chipW, 0);
-  chipGrad.addColorStop(0, GOLD);
-  chipGrad.addColorStop(1, GOLD_LIGHT);
-  ctx.fillStyle = chipGrad;
-  roundRect(ctx, chipX, 1165, chipW, 82, 41);
-  ctx.fill();
-  ctx.fillStyle = "#20130A";
-  ctx.textAlign = "center";
-  ctx.fillText(shown, W / 2, 1218);
+  // The download link is deliberately NOT drawn on the image any more.
+  // Android dropped its "GET THE APP" pill for the same reason: a link baked
+  // into a PNG can't be tapped and goes stale the moment the owner changes it.
+  // It travels in the share TEXT instead, where it stays live.
 
   return canvas;
 }
@@ -241,14 +229,19 @@ function canvasToBlob(canvas) {
  * @param {{year:number, activeMembers:number, totalMembers:number, collectionMinor:number}} stats
  */
 export async function shareReferralCard(stats) {
-  const url = (await fetchApkLink()) || fallbackUrl();
+  const links = await fetchLinks();
+  const url = links.apkLink || fallbackUrl();
   const canvas = await drawCard(stats, url);
   const blob = await canvasToBlob(canvas);
   const fileName = `hkf-${stats.year}.png`;
   const file = new File([blob], fileName, { type: "image/png" });
   // Same copy Android puts in the share intent, so a forwarded message reads
   // identically whichever app it came from.
-  const text = `Join the Hasnain Karimain Foundation! Download the app: ${url}`;
+  const text = [
+    "Join the Hasnain Karimain Foundation!",
+    "Download the app: " + url,
+    links.websiteLink ? "Visit our website: " + links.websiteLink : ""
+  ].filter(Boolean).join("\n");
 
   // Feature-detect the file share before calling it: Android Chrome supports
   // it, iOS Safari supports it, most desktops don't, and calling share() with

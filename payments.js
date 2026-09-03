@@ -22,15 +22,15 @@ import {
   serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js";
 
-import { firebaseApp } from "./firebase-init.js?v=2026-08-20a";
-import { displayNameFor } from "./auth.js?v=2026-08-20a";
+import { firebaseApp } from "./firebase-init.js?v=2026-09-02a";
+import { displayNameFor } from "./auth.js?v=2026-09-02a";
 import {
   getSelectedYear,
   onYearChange,
   chartStartForYear,
   ensureYearsFromMonthKeys,
   nextNMonths
-} from "./year-state.js?v=2026-08-20a";
+} from "./year-state.js?v=2026-09-02a";
 import {
   pickFiles,
   prepareAttachment,
@@ -39,7 +39,15 @@ import {
   viewPaymentProof,
   formatBytes,
   ACCEPT_IMAGES
-} from "./attachments.js?v=2026-08-20a";
+} from "./attachments.js?v=2026-09-02a";
+
+import {
+  observeCollectors,
+  getCollectorChoice,
+  clearCollectorChoice,
+  HKF_DIRECT_UID,
+  HKF_DIRECT_LABEL
+} from "./collectors.js?v=2026-09-02a";
 
 const db = getDatabase(firebaseApp);
 const MONTH_LABELS = ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"];
@@ -397,7 +405,9 @@ function renderHistoryRow(entry) {
           <span>${escapeHtml(ml)}</span>
           <span class="pill ${pillClass} pill-tiny">${pillLabel}</span>
         </div>
-        <div class="history-row-sub">${escapeHtml(r.category || "Contribution")}</div>
+        <div class="history-row-sub">${escapeHtml(
+          (r.category || "Contribution") + (r.collectorName ? " · Paid to " + r.collectorName : "")
+        )}</div>
         ${proof}
       </div>
       <div class="history-row-amount muted">${formatRupees(r.amountMinor || 0)}</div>
@@ -430,6 +440,14 @@ function openRequestDialog(user, prefillMillis) {
           <span>Amount (₹) *</span>
           <input type="text" inputmode="decimal" id="r-amount" placeholder="0" />
         </label>
+
+        <label class="field">
+          <span>Paid to *</span>
+          <select id="r-collector"></select>
+        </label>
+        <div class="settings-help" id="r-collector-help">
+          Only the admin you paid (or the owner) can approve this.
+        </div>
 
         <div class="months-field">
           <div class="months-text">
@@ -473,7 +491,44 @@ function openRequestDialog(user, prefillMillis) {
   const todayStr = fmt(today);
   const dateEl = dialog.querySelector("#r-date");
   dateEl.value = prefillMillis ? fmt(new Date(prefillMillis)) : todayStr;
-  dateEl.max = todayStr;
+  // Future dates are allowed now: members pay for upcoming months in advance,
+  // which is the whole point of the Months-covered stepper. Android dropped
+  // its selectableDates ceiling for the same reason.
+
+  // "Paid to" — mandatory. Live list of collector admins plus the foundation's
+  // own account. Pre-selected from whoever the member just paid in the Home
+  // pay flow; straight into this dialog defaults to HKF direct, same as
+  // Android.
+  const collectorEl = dialog.querySelector("#r-collector");
+  const choice = getCollectorChoice();
+  let collectorUid = choice?.uid || HKF_DIRECT_UID;
+  let collectorName = choice?.name || HKF_DIRECT_LABEL;
+  let collectorList = [];
+
+  function renderCollectorOptions() {
+    const options = collectorList
+      .map(c => ({ uid: c.uid, label: c.label }))
+      .concat([{ uid: HKF_DIRECT_UID, label: HKF_DIRECT_LABEL }]);
+    // A collector who has since paused still shows while they're the current
+    // selection, so a pre-filled choice can't silently become something else.
+    if (!options.some(o => o.uid === collectorUid)) {
+      options.unshift({ uid: collectorUid, label: collectorName });
+    }
+    collectorEl.innerHTML = options
+      .map(o => `<option value="${escapeHtml(o.uid)}"${o.uid === collectorUid ? " selected" : ""}>${escapeHtml(o.label)}</option>`)
+      .join("");
+  }
+  renderCollectorOptions();
+
+  const unsubCollectors = observeCollectors(list => {
+    collectorList = list.filter(c => c.canReceive);
+    renderCollectorOptions();
+  });
+
+  collectorEl.addEventListener("change", () => {
+    collectorUid = collectorEl.value;
+    collectorName = collectorEl.options[collectorEl.selectedIndex]?.textContent || "";
+  });
 
   const amountEl = dialog.querySelector("#r-amount");
   amountEl.addEventListener("input", e => {
@@ -555,7 +610,10 @@ function openRequestDialog(user, prefillMillis) {
     }
   });
 
-  function close() { document.body.removeChild(dialog); }
+  function close() {
+    unsubCollectors();
+    document.body.removeChild(dialog);
+  }
   dialog.querySelector("#r-cancel").addEventListener("click", close);
   dialog.addEventListener("click", e => { if (e.target === dialog) close(); });
 
@@ -585,6 +643,8 @@ function openRequestDialog(user, prefillMillis) {
         coversMonthKey,
         category,
         coversMonthCount: monthsCount,
+        collectorUid,
+        collectorName,
         status: "pending",
         createdAtMillis: serverTimestamp(),
         decidedByEmail: "",
@@ -602,12 +662,14 @@ function openRequestDialog(user, prefillMillis) {
           // card doesn't advertise a proof that isn't there.
           console.error("proof upload failed", e);
           await set(ref(db, "paymentRequests/" + reqRef.key + "/proofName"), "").catch(() => {});
+          clearCollectorChoice();
           window.showSnackbar?.("Request sent, but the screenshot didn't upload");
           close();
           return;
         }
       }
 
+      clearCollectorChoice();
       window.showSnackbar?.(monthsCount > 1
         ? `Request submitted for ${monthsCount} months - awaiting approval`
         : "Request submitted - awaiting approval");

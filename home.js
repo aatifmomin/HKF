@@ -10,11 +10,17 @@ import {
   get
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js";
 
-import { firebaseApp } from "./firebase-init.js?v=2026-08-20a";
-import { getSelectedYear, onYearChange, chartStartForYear, ensureYearsFromMonthKeys } from "./year-state.js?v=2026-08-20a";
-import { loadPaymentQr } from "./attachments.js?v=2026-08-20a";
+import { firebaseApp } from "./firebase-init.js?v=2026-09-02a";
+import { getSelectedYear, onYearChange, chartStartForYear, ensureYearsFromMonthKeys } from "./year-state.js?v=2026-09-02a";
+import { loadPaymentQr } from "./attachments.js?v=2026-09-02a";
+import { openPayDialog, statsFor } from "./collectors.js?v=2026-09-02a";
+import { BUILD_ID } from "./version.js?v=2026-09-02a";
 
 const db = getDatabase(firebaseApp);
+
+function escapeHtml(s) {
+  return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
 
 function formatRupees(amountMinor) {
   if (!amountMinor || amountMinor <= 0) return "\u20B90";
@@ -73,11 +79,11 @@ export function renderHome(container) {
     </div>
 
     ${isAdmin ? "" : `
-    <div class="qr-card" id="qr-card" hidden>
+    <div class="qr-card" id="qr-card">
       <div class="qr-card-text">
-        <div class="qr-eyebrow">PAY VIA BANK QR</div>
-        <div class="qr-title">Contribute using GPay, PhonePe, Cred &amp; more</div>
-        <div class="qr-sub" id="qr-sub">Loading QR…</div>
+        <div class="qr-eyebrow">PAY CONTRIBUTION</div>
+        <div class="qr-title">Pay a collector admin or HKF directly</div>
+        <div class="qr-sub" id="qr-sub">Loading…</div>
       </div>
       <div class="qr-glyph" id="qr-glyph"><div class="spinner"></div></div>
     </div>
@@ -111,6 +117,23 @@ export function renderHome(container) {
       <div class="balance-value" id="stat-pending">-</div>
       <div class="balance-sub" id="stat-pending-sub">Collection minus handovers paid</div>
     </div>
+
+    ${isAdmin ? `
+    <div class="nav-card" id="collections-card">
+      <div class="nav-card-head">
+        <div class="nav-card-text">
+          <div class="nav-card-eyebrow">MY COLLECTIONS</div>
+          <div class="nav-card-title">Your QR, money received, transfers to HKF</div>
+        </div>
+        <span class="nav-card-caret">&rsaquo;</span>
+      </div>
+      <div class="coll-summary" id="coll-summary">
+        <div class="coll-summary-cell"><span class="coll-summary-label">RECEIVED</span><span class="coll-summary-value">…</span></div>
+        <div class="coll-summary-cell"><span class="coll-summary-label">PENDING</span><span class="coll-summary-value">…</span></div>
+        <div class="coll-summary-cell"><span class="coll-summary-label">TRANSFERRED</span><span class="coll-summary-value">…</span></div>
+      </div>
+    </div>
+    ` : ""}
 
     <div class="chart-section">
       <div class="chart-label">Monthly collection</div>
@@ -154,6 +177,18 @@ export function renderHome(container) {
     </div>
     ` : ""}
 
+    ${isAdmin ? `
+    <div class="nav-card" id="support-card">
+      <div class="nav-card-head">
+        <div class="nav-card-text">
+          <div class="nav-card-eyebrow">TECH SUPPORT</div>
+          <div class="nav-card-title">Send a suggestion or report a problem</div>
+        </div>
+        <span class="nav-card-caret">&rsaquo;</span>
+      </div>
+    </div>
+    ` : ""}
+
     <div class="share-section">
       <div class="share-text">
         <div class="share-label">SPREAD THE WORD</div>
@@ -164,6 +199,10 @@ export function renderHome(container) {
         <span>Share &amp; refer</span>
       </button>
     </div>
+
+    <div class="update-card" id="update-card" hidden></div>
+
+    <div class="app-version-line">HKF web build ${escapeHtml(BUILD_ID)}</div>
   `;
 
   const greetingEl = container.querySelector("#home-greeting");
@@ -179,7 +218,7 @@ export function renderHome(container) {
   if (pdfBtn) {
     pdfBtn.addEventListener("click", async () => {
       await runDownload(pdfBtn, async () => {
-        const mod = await import("./year-report.js?v=2026-08-20a");
+        const mod = await import("./year-report.js?v=2026-09-02a");
         await mod.downloadYearReportPdf(getSelectedYear());
       }, "PDF");
     });
@@ -187,7 +226,7 @@ export function renderHome(container) {
   if (xlsxBtn) {
     xlsxBtn.addEventListener("click", async () => {
       await runDownload(xlsxBtn, async () => {
-        const mod = await import("./year-report.js?v=2026-08-20a");
+        const mod = await import("./year-report.js?v=2026-09-02a");
         await mod.downloadYearReportXlsx(getSelectedYear());
       }, "Excel");
     });
@@ -197,7 +236,16 @@ export function renderHome(container) {
   // renders in a loading state first so it doesn't pop in halfway down the
   // page, then hides itself if there's nothing to show.
   let qrTeardown = null;
-  if (!isAdmin) qrTeardown = setupPayQr(container);
+  if (!isAdmin) qrTeardown = setupPayCard(container);
+
+  // Admin-only entry points. Android puts both on Home for the same reason the
+  // web does: the nav bar is full at five tabs.
+  container.querySelector("#collections-card")?.addEventListener("click", () => window.__openCollections?.());
+  container.querySelector("#support-card")?.addEventListener("click", () => window.__openSupport?.());
+  if (isAdmin) loadCollectionSummary(container);
+
+  // App-update card. Everyone sees it, members and admins alike.
+  const updateTeardown = setupUpdateCard(container);
 
   // Share card. Rendered from the numbers already on screen, so the button is
   // instant after the canvas module loads.
@@ -207,7 +255,7 @@ export function renderHome(container) {
     shareBtn.disabled = true;
     shareBtn.innerHTML = `<span class="share-icon">⋯</span><span>Building...</span>`;
     try {
-      const mod = await import("./share-card.js?v=2026-08-20a");
+      const mod = await import("./share-card.js?v=2026-09-02a");
       const outcome = await mod.shareReferralCard({ ...lastStats, year: getSelectedYear() });
       if (outcome === "downloaded") {
         window.showSnackbar?.("Card saved to your downloads - attach it to a message");
@@ -264,6 +312,7 @@ export function renderHome(container) {
     if (unsubHandovers) unsubHandovers();
     unsubYear();
     if (qrTeardown) qrTeardown();
+    updateTeardown();
     unsubMembers = unsubPayments = unsubHandovers = null;
   };
 }
@@ -408,84 +457,120 @@ function formatRupeesCompact(amountMinor) {
 }
 
 /**
- * Bank-QR card for members.
+ * "Pay contribution" card for members.
  *
- * The image is stored base64 at /settings/paymentQr and fetched once, on
- * mount. If the owner hasn't uploaded one the card removes itself. Tapping it
- * opens the QR full-width, plus an "Open UPI apps" button when a UPI ID is
- * configured - that hands off to GPay / PhonePe / Paytm via a upi:// link,
- * with no amount, so the member types what they're paying.
+ * Android replaced the old bank-QR dialog with a two-step chooser: pick the
+ * admin who is collecting from you (each admin sets their own QR and UPI ID in
+ * My Collections) or the foundation's own account, then see that target's QR,
+ * UPI ID and — for the foundation — its bank details with tap-to-copy. The
+ * choice is remembered so the request dialog's "Paid to" is pre-filled.
+ *
+ * The card no longer removes itself when the owner has uploaded no QR: with
+ * collector admins in the picture there is usually somebody to pay even when
+ * /settings/paymentQr is empty.
  */
-function setupPayQr(container) {
+function setupPayCard(container) {
   const card = container.querySelector("#qr-card");
   if (!card) return null;
 
   let cancelled = false;
-  let qr = null;
-  let upi = { upiId: "", upiName: "" };
-
-  card.hidden = false;   // show in loading state so it doesn't pop in later
+  let foundation = { bankDetails: "", upiId: "", upiName: "", qrBase64: "" };
 
   (async () => {
     try {
-      const [settingsSnap, blob] = await Promise.all([
-        get(ref(db, "settings")),
-        loadPaymentQr()
-      ]);
+      const settingsSnap = await get(ref(db, "settings"));
       if (cancelled) return;
       const v = settingsSnap.val() || {};
-      upi = { upiId: String(v.upiId || "").trim(), upiName: String(v.upiName || "").trim() };
-      qr = blob;
+      foundation.upiId = String(v.upiId || "").trim();
+      foundation.upiName = String(v.upiName || "").trim();
+      foundation.bankDetails = String(v.bankDetails || "").trim();
+      // The QR blob is a separate read: /settings carries only its file name
+      // so the settings listener stays small.
+      if (v.paymentQr && v.paymentQr.name) {
+        const blob = await loadPaymentQr();
+        if (!cancelled && blob) foundation.qrBase64 = blob.base64;
+      }
     } catch (e) {
-      console.warn("QR load failed", e);
+      console.warn("pay card settings load failed", e);
     }
     if (cancelled) return;
 
-    if (!qr) { card.remove(); return; }
-
-    card.querySelector("#qr-sub").textContent = "Tap to view QR and pay";
-    card.querySelector("#qr-glyph").innerHTML = `<img alt="" src="data:image/png;base64,${qr.base64}" />`;
+    card.querySelector("#qr-sub").textContent = "QR · UPI · bank transfer";
+    card.querySelector("#qr-glyph").innerHTML = foundation.qrBase64
+      ? `<img alt="" src="data:image/jpeg;base64,${foundation.qrBase64}" />`
+      : `<span class="qr-glyph-mark">₹</span>`;
     card.classList.add("ready");
-    card.addEventListener("click", () => openQrDialog(qr, upi));
   })();
+
+  card.addEventListener("click", () => openPayDialog(foundation));
 
   return function teardown() { cancelled = true; };
 }
 
-function openQrDialog(qr, upi) {
-  const hasUpi = !!upi.upiId;
-  const dialog = document.createElement("div");
-  dialog.className = "modal-overlay";
-  dialog.innerHTML = `
-    <div class="modal">
-      <div class="modal-title">Pay via bank QR</div>
-      <div class="modal-body">
-        <img class="qr-full" alt="Payment QR code" src="data:image/png;base64,${qr.base64}" />
-        <div class="qr-help">${
-          hasUpi
-            ? "Open your UPI app below, or scan this QR from another device."
-            : "Scan this QR from another device to pay."
-        }</div>
-      </div>
-      <div class="modal-actions">
-        <button class="modal-btn" id="qr-close">Close</button>
-        ${hasUpi ? `<a class="modal-btn primary" id="qr-open" href="#">Open UPI apps</a>` : ""}
-      </div>
-    </div>
-  `;
-  document.body.appendChild(dialog);
-
-  if (hasUpi) {
-    // No `am` (amount) and no `tn` (note) on purpose, matching Android: the
-    // member enters the amount in their own UPI app.
-    const link = "upi://pay?pa=" + encodeURIComponent(upi.upiId) +
-      "&pn=" + encodeURIComponent(upi.upiName || "HKF") + "&cu=INR";
-    dialog.querySelector("#qr-open").href = link;
+/**
+ * The admin's own collection figures, shown on the MY COLLECTIONS card.
+ * Derived, so this is a one-shot read rather than a listener — the full
+ * screen behind the card has its own Refresh.
+ */
+async function loadCollectionSummary(container) {
+  const host = container.querySelector("#coll-summary");
+  if (!host) return;
+  const uid = window.__currentUser?.uid;
+  if (!uid) return;
+  try {
+    const s = await statsFor(uid);
+    const cells = [
+      ["RECEIVED", s.receivedMinor, false],
+      ["PENDING", s.balanceMinor, s.balanceMinor > 0],
+      ["TRANSFERRED", s.transferredMinor, false]
+    ];
+    host.innerHTML = cells.map(([label, minor, highlight]) => `
+      <div class="coll-summary-cell${highlight ? " highlight" : ""}">
+        <span class="coll-summary-label">${label}</span>
+        <span class="coll-summary-value">${escapeHtml(formatRupees(minor))}</span>
+      </div>`).join("");
+  } catch (e) {
+    console.warn("collection summary failed", e);
+    host.innerHTML = `<div class="coll-summary-error">Couldn't load figures</div>`;
   }
+}
 
-  function close() { if (dialog.parentNode) document.body.removeChild(dialog); }
-  dialog.querySelector("#qr-close").addEventListener("click", close);
-  dialog.addEventListener("click", e => { if (e.target === dialog) close(); });
+/**
+ * App-update card, driven by /settings/{appUpdateEnabled, appLatestVersion,
+ * appUpdateNotes} and pointing at apkLink.
+ *
+ * Divergence from Android, deliberate: Android compares appLatestVersion with
+ * the version installed on that phone and hides the card when they match. A
+ * browser has no installed version — it always runs whatever was last
+ * deployed — so the web shows the card whenever the owner has switched it on,
+ * and words it as an ANDROID app update, which is what the APK link is.
+ */
+function setupUpdateCard(container) {
+  const card = container.querySelector("#update-card");
+  if (!card) return () => {};
+
+  const unsub = onValue(ref(db, "settings"), snap => {
+    const v = snap.val() || {};
+    const enabled = v.appUpdateEnabled === true;
+    const version = String(v.appLatestVersion || "").trim();
+    const notes = String(v.appUpdateNotes || "").trim();
+    const link = String(v.apkLink || "").trim();
+    if (!enabled || !version) { card.hidden = true; return; }
+    card.hidden = false;
+    card.innerHTML = `
+      <div class="update-eyebrow">ANDROID APP UPDATE</div>
+      <div class="update-title">Version ${escapeHtml(version)} is available</div>
+      ${notes ? `<div class="update-notes">${escapeHtml(notes)}</div>` : ""}
+      ${link ? `
+        <a class="update-btn" href="${escapeHtml(link)}" target="_blank" rel="noopener">Get the app</a>
+        <div class="update-hint">
+          Download from the link, open the file and install over the existing
+          app — your data stays safe. This website is always up to date.
+        </div>` : ""}
+    `;
+  }, () => { card.hidden = true; });
+
+  return unsub;
 }
 
 /**

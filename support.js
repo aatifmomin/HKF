@@ -34,8 +34,8 @@ import {
   runTransaction
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js";
 
-import { firebaseApp } from "./firebase-init.js?v=2026-08-20a";
-import { displayNameFor } from "./auth.js?v=2026-08-20a";
+import { firebaseApp } from "./firebase-init.js?v=2026-09-02a";
+import { displayNameFor } from "./auth.js?v=2026-09-02a";
 
 const db = getDatabase(firebaseApp);
 
@@ -261,7 +261,7 @@ export function renderSupport(container) {
         <div class="page-title">Tech Support</div>
         <div class="page-subtitle" id="sp-counts">0 open · 0 total</div>
       </div>
-      <button class="add-pill" id="sp-new">+ New issue</button>
+      <button class="add-pill" id="sp-new">+ Suggestion</button>
     </div>
     <input class="search-input" id="sp-search" placeholder="Search by ID or title…" />
     <div id="sp-list">
@@ -283,10 +283,10 @@ export function renderSupport(container) {
 
   container.querySelector("#sp-new").addEventListener("click", () => {
     openDialog({
-      title: "New issue",
+      title: "Suggestion",
       fields: [
         { id: "sp-title", label: "Title" },
-        { id: "sp-desc", label: "Describe the problem", multiline: true, rows: 4 }
+        { id: "sp-desc", label: "Describe your suggestion or issue", multiline: true, rows: 4 }
       ],
       confirm: "Submit",
       requireFirstField: true,
@@ -317,8 +317,8 @@ export function renderSupport(container) {
 
     if (tickets.length === 0) {
       listEl.innerHTML = `<div class="empty-state">
-        No issues filed yet. Tap + New issue to report a problem — you'll get a
-        ticket ID to track it.
+        Nothing filed yet. Tap + Suggestion to send a suggestion or report a
+        problem — you'll get a ticket ID to track it.
       </div>`;
       return;
     }

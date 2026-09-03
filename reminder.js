@@ -27,9 +27,9 @@ import {
   serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js";
 
-import { firebaseApp } from "./firebase-init.js?v=2026-08-20a";
-import { displayNameFor } from "./auth.js?v=2026-08-20a";
-import { memberDisplayName, copyToClipboard } from "./members.js?v=2026-08-20a";
+import { firebaseApp } from "./firebase-init.js?v=2026-09-02a";
+import { displayNameFor } from "./auth.js?v=2026-09-02a";
+import { memberDisplayName, copyToClipboard } from "./members.js?v=2026-09-02a";
 
 const db = getDatabase(firebaseApp);
 

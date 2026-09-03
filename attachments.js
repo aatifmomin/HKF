@@ -41,7 +41,7 @@ import {
   push
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js";
 
-import { firebaseApp } from "./firebase-init.js?v=2026-08-20a";
+import { firebaseApp } from "./firebase-init.js?v=2026-09-02a";
 
 const db = getDatabase(firebaseApp);
 
@@ -187,6 +187,51 @@ export async function prepareAttachment(file) {
     base64: out,
     sizeBytes: base64Bytes(out)
   };
+}
+
+/**
+ * Tighter variant of prepareAttachment for images that live inside a record
+ * a list listener downloads (announcement banners, collector QRs). Android's
+ * compressBitmapTo200Kb walks the quality ladder, then halves the bitmap once
+ * if it still doesn't fit; this does the same with the same 1280px long edge
+ * and 200 KB ceiling, so a picture attached on either client is about the
+ * same weight on the wire.
+ */
+export async function prepareImageWithin(file, maxBytes = 200_000, maxDim = 1280) {
+  const mime = (file.type || "").toLowerCase();
+  if (!mime.startsWith("image/")) throw new Error(`"${file.name}" isn't a JPG or PNG`);
+
+  const img = await loadImage(await readAsDataUrl(file));
+
+  function encode(w, h, quality) {
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, w);
+    canvas.height = Math.max(1, h);
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#FFFFFF";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    return stripDataUrl(canvas.toDataURL("image/jpeg", quality));
+  }
+
+  const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+  let w = Math.round(img.width * scale);
+  let h = Math.round(img.height * scale);
+
+  let out = "";
+  for (let q = 0.88; q >= 0.35; q -= 0.08) {
+    out = encode(w, h, q);
+    if (base64Bytes(out) <= maxBytes) break;
+  }
+  if (base64Bytes(out) > maxBytes) {
+    out = encode(Math.round(w / 2), Math.round(h / 2), 0.7);
+  }
+  if (base64Bytes(out) > maxBytes) {
+    throw new Error("That image is too detailed to fit — try a smaller crop");
+  }
+
+  const baseName = (file.name || "image").replace(/\.[^.]+$/, "");
+  return { name: baseName + ".jpg", type: "jpg", base64: out, sizeBytes: base64Bytes(out) };
 }
 
 /** Prepare many files, collecting per-file errors instead of aborting. */

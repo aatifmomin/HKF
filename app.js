@@ -10,7 +10,7 @@
 //      show the role picker. Regular members skip straight to their shell.
 //   4. Bottom nav is animated between tab switches.
 
-import { signIn, signOut, observeAuth, observeAdminEmails, isAdminEmail, isOwner, displayNameFor } from "./auth.js?v=2026-08-20a";
+import { signIn, signOut, observeAuth, observeAdminEmails, isAdminEmail, isOwner, displayNameFor } from "./auth.js?v=2026-09-02a";
 import {
   resolveMembership,
   observeMembership,
@@ -18,18 +18,20 @@ import {
   MEMBERSHIP_MEMBER,
   MEMBERSHIP_PENDING,
   MEMBERSHIP_DECLINED
-} from "./members-self.js?v=2026-08-20a";
-import { getSelectedYear, getSupportedYears, setSelectedYear } from "./year-state.js?v=2026-08-20a";
-import { renderHome } from "./home.js?v=2026-08-20a";
-import { renderActivity } from "./activity.js?v=2026-08-20a";
-import { renderHandover } from "./handover.js?v=2026-08-20a";
-import { renderPayments } from "./payments.js?v=2026-08-20a";
-import { renderMembers } from "./members.js?v=2026-08-20a";
-import { renderProfile } from "./profile.js?v=2026-08-20a";
-import { renderSupport } from "./support.js?v=2026-08-20a";
-import { renderReminder } from "./reminder.js?v=2026-08-20a";
-import { renderSettings } from "./settings.js?v=2026-08-20a";
-import { BUILD_ID } from "./version.js?v=2026-08-20a";
+} from "./members-self.js?v=2026-09-02a";
+import { getSelectedYear, getSupportedYears, setSelectedYear } from "./year-state.js?v=2026-09-02a";
+import { renderHome } from "./home.js?v=2026-09-02a";
+import { renderActivity, observeNewestPending } from "./activity.js?v=2026-09-02a";
+import { renderHandover } from "./handover.js?v=2026-09-02a";
+import { renderPayments } from "./payments.js?v=2026-09-02a";
+import { renderMembers } from "./members.js?v=2026-09-02a";
+import { renderProfile } from "./profile.js?v=2026-09-02a";
+import { renderSupport } from "./support.js?v=2026-09-02a";
+import { renderReminder } from "./reminder.js?v=2026-09-02a";
+import { renderSettings } from "./settings.js?v=2026-09-02a";
+import { renderCollections } from "./collectors.js?v=2026-09-02a";
+import { mountAnnouncementsBell } from "./announcements.js?v=2026-09-02a";
+import { BUILD_ID } from "./version.js?v=2026-09-02a";
 
 // Tab definitions per role. Mirrors Android nav order. Members no longer have
 // a Discussion tab at all - the chat is gone, and the Activity feed that
@@ -60,6 +62,19 @@ let currentUser = null;
 let membership = null;      // { status, request? }
 let unsubMembership = null;
 let currentScreen = null;   // "signin" | "loading" | "pending" | "declined" | "role" | "shell"
+let bellTeardown = null;
+let unsubActivityBadge = null;
+
+// Activity tab red dot. Android compares the newest PENDING item against a
+// marker in SharedPreferences; the web does the same against localStorage, so
+// the dot is per-device on both clients and neither writes it to the database.
+const ACTIVITY_SEEN_KEY = "hkf_activity_seen";
+function activitySeenAt() {
+  try { return Number(localStorage.getItem(ACTIVITY_SEEN_KEY)) || 0; } catch { return 0; }
+}
+function markActivitySeen() {
+  try { localStorage.setItem(ACTIVITY_SEEN_KEY, String(Date.now())); } catch { /* private mode */ }
+}
 
 const root = document.getElementById("app");
 
@@ -157,8 +172,17 @@ function showScreen(name, renderFn) {
   // The shell manages its own updates once mounted; re-rendering it on every
   // database echo would throw the user back to whichever tab they started on.
   if (currentScreen === name) return;
+  // Leaving the shell throws away the top bar, so its listeners have to go
+  // with it — otherwise signing out leaves the bell subscribed to a node the
+  // signed-out user can no longer read.
+  if (currentScreen === "shell") releaseShellListeners();
   currentScreen = name;
   renderFn();
+}
+
+function releaseShellListeners() {
+  if (bellTeardown) { bellTeardown(); bellTeardown = null; }
+  if (unsubActivityBadge) { unsubActivityBadge(); unsubActivityBadge = null; }
 }
 
 /** Force the shell to (re)mount - used after the role picker. */
@@ -335,6 +359,7 @@ function renderShell() {
           <span id="year-picker-label">${getSelectedYear()}</span>
           <span class="year-picker-caret">&#x25BE;</span>
         </button>
+        <span class="bell-host" id="bell-host"></span>
         <div class="top-bar-right">
           ${role === "admin" && isOwner(currentUser?.email)
             ? `<button class="gear-pill" id="settings-btn" title="Settings" aria-label="Settings">&#x2699;</button>`
@@ -362,6 +387,16 @@ function renderShell() {
 
   document.getElementById("settings-btn")?.addEventListener("click", () => window.__openSettings());
 
+  // Announcements bell. Android hangs it off Home beside the year picker; the
+  // web top bar is shared by every tab, so it lives there and is reachable
+  // from anywhere. Same node, same unread rule.
+  if (bellTeardown) { bellTeardown(); bellTeardown = null; }
+  const bellHost = document.getElementById("bell-host");
+  if (bellHost) bellTeardown = mountAnnouncementsBell(bellHost);
+
+  if (unsubActivityBadge) { unsubActivityBadge(); unsubActivityBadge = null; }
+  if (role === "admin") unsubActivityBadge = watchActivityBadge();
+
   // Year picker: tap opens a small popover with the supported years
   document.getElementById("year-picker").addEventListener("click", e => {
     e.stopPropagation();
@@ -374,16 +409,36 @@ function renderShell() {
       document.querySelectorAll(".nav-item").forEach(x => x.classList.remove("active"));
       el.classList.add("active");
       currentTab = el.dataset.tab;
+      if (currentTab === "activity") clearActivityBadge();
       renderTab(currentTab);
     });
   });
 
+  if (currentTab === "activity") clearActivityBadge();
   renderTab(currentTab);
+}
+
+/**
+ * Red dot on the Activity tab whenever something pending is newer than the
+ * last time this device opened the tab.
+ */
+function watchActivityBadge() {
+  return observeNewestPending(newest => {
+    const el = document.querySelector('.nav-item[data-tab="activity"]');
+    if (!el) return;
+    el.classList.toggle("has-dot", newest > activitySeenAt() && currentTab !== "activity");
+  });
+}
+
+function clearActivityBadge() {
+  markActivitySeen();
+  document.querySelector('.nav-item[data-tab="activity"]')?.classList.remove("has-dot");
 }
 
 /** Switch tabs programmatically, keeping the nav highlight in sync. */
 function goToTab(tab) {
   currentTab = tab;
+  if (tab === "activity") clearActivityBadge();
   document.querySelectorAll(".nav-item").forEach(el => {
     el.classList.toggle("active", el.dataset.tab === tab);
   });
@@ -392,6 +447,24 @@ function goToTab(tab) {
 
 // Home's gear calls this. Only wired for an owner viewing as admin, which is
 // the same gate Android uses.
+// Home's MY COLLECTIONS card calls this. Admin-only, like Android's
+// showCollections branch in AppScaffold.
+window.__openCollections = function () {
+  if (role !== "admin") return;
+  document.querySelectorAll(".nav-item").forEach(el => el.classList.remove("active"));
+  currentTab = "collections";
+  renderTab("collections");
+};
+
+// Home's TECH SUPPORT card calls this. Android moved the admin's own
+// ticket screen onto Home because its nav bar is full; the web nav is too.
+window.__openSupport = function () {
+  if (role !== "admin") return;
+  document.querySelectorAll(".nav-item").forEach(el => el.classList.remove("active"));
+  currentTab = "support";
+  renderTab("support");
+};
+
 window.__openSettings = function () {
   if (role !== "admin") return;
   document.querySelectorAll(".nav-item").forEach(el => el.classList.remove("active"));
@@ -419,6 +492,9 @@ function renderTab(tab) {
     case "reminder": activeTeardown = renderReminder(anim); break;
     case "support":  activeTeardown = renderSupport(anim); break;
     case "payments": activeTeardown = renderPayments(anim); break;
+    case "collections":
+      activeTeardown = renderCollections(anim, { onBack: () => goToTab("home") });
+      break;
     case "settings":
       // Not a tab: Settings takes over the content area and offers a back
       // link. The bottom nav stays visible so the user is never stranded.
