@@ -9,11 +9,11 @@ Every build now carries a visible id. Check it before anything else:
   * it is printed on the SIGN-IN screen, under the Google button
   * it is at the bottom of Settings (gear on Home, owner only)
   * it is logged to the browser console at startup:
-        HKF web build 2026-09-02b
+        HKF web build 2026-09-02c
 
-This build is  2026-09-02b.
+This build is  2026-09-02c.
 
-  Shows 2026-09-02b  -> the new code IS live. If a specific screen still
+  Shows 2026-09-02c  -> the new code IS live. If a specific screen still
                         looks wrong, see "which screens changed" below —
                         several of the new ones are MEMBER-only and are
                         invisible while you're signed in as Admin.
@@ -58,7 +58,7 @@ Run ./bump-version.sh before redeploying. It rewrites the build id in
 version.js and the ?v= stamp on every import, so browsers fetch the new code
 instead of reusing what they already have.
 
-  ./bump-version.sh              uses today's date, e.g. 2026-09-02b
+  ./bump-version.sh              uses today's date, e.g. 2026-09-02c
   ./bump-version.sh my-build-7   uses whatever you pass
 
 No shell? Edit version.js by hand and do a find-and-replace of the old ?v=
@@ -105,7 +105,7 @@ Files included:
   firebase-init.js        — Firebase app/db/auth bootstrap
   auth.js                 — Google sign-in + admin email observer
   members-self.js         — membership resolution + join-request queue
-  year-state.js           — global selected-year state (2026-2030)
+  year-state.js           — global selected-year state (rolling ±2 years)
   lib-loader.js           — shared lazy CDN loader for jsPDF / SheetJS
   attachments.js          — image compression + base64 blob storage helpers
   year-report.js          — annual PDF + XLSX report builders
@@ -439,6 +439,23 @@ The card prints /settings/apkLink — the same value Android uses — which the
 owner edits in Settings. If it's empty the web falls back to whatever origin
 the app is served from, rather than Android's "www.drive_dummy/HKF.apk"
 placeholder.
+
+
+Year picker  (CHANGED this build)
+  The picker now offers a ROLLING window: two years back, this year, two years
+  forward. In 2026 that's 2024 / 2025 / 2026 / 2027 / 2028; in 2027 it becomes
+  2025-2029 by itself, with nothing to edit and no new build to ship.
+
+  It replaces a fixed 2026-2030 list, which couldn't look back at 2024 or 2025
+  and would have run out entirely in 2031.
+
+  Any year your DATA mentions still joins the list on top of that, so
+  back-filling 2022 payments makes 2022 appear on its own.
+
+  The Android app still hardcodes 2026-2030, so its picker will offer
+  different years until you make the matching change there. Nothing breaks —
+  this list is computed on each device and never stored — but the two apps
+  will look inconsistent. ANDROID-COMPAT.md has the exact Kotlin.
 
 
 Year filter applies to:

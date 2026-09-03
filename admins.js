@@ -18,10 +18,10 @@ import {
   serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js";
 
-import { firebaseApp } from "./firebase-init.js?v=2026-09-02b";
-import { outstandingBalanceForEmail } from "./collectors.js?v=2026-09-02b";
-import { isOwner } from "./auth.js?v=2026-09-02b";
-import { OWNER_EMAIL } from "./firebase-config.js?v=2026-09-02b";
+import { firebaseApp } from "./firebase-init.js?v=2026-09-02c";
+import { outstandingBalanceForEmail } from "./collectors.js?v=2026-09-02c";
+import { isOwner } from "./auth.js?v=2026-09-02c";
+import { OWNER_EMAIL } from "./firebase-config.js?v=2026-09-02c";
 
 const db = getDatabase(firebaseApp);
 

@@ -10,7 +10,7 @@
 //      show the role picker. Regular members skip straight to their shell.
 //   4. Bottom nav is animated between tab switches.
 
-import { signIn, signOut, observeAuth, observeAdminEmails, isAdminEmail, isOwner, displayNameFor } from "./auth.js?v=2026-09-02b";
+import { signIn, signOut, observeAuth, observeAdminEmails, isAdminEmail, isOwner, displayNameFor } from "./auth.js?v=2026-09-02c";
 import {
   resolveMembership,
   observeMembership,
@@ -18,20 +18,20 @@ import {
   MEMBERSHIP_MEMBER,
   MEMBERSHIP_PENDING,
   MEMBERSHIP_DECLINED
-} from "./members-self.js?v=2026-09-02b";
-import { getSelectedYear, getSupportedYears, setSelectedYear } from "./year-state.js?v=2026-09-02b";
-import { renderHome } from "./home.js?v=2026-09-02b";
-import { renderActivity, observeNewestPending } from "./activity.js?v=2026-09-02b";
-import { renderHandover } from "./handover.js?v=2026-09-02b";
-import { renderPayments } from "./payments.js?v=2026-09-02b";
-import { renderMembers } from "./members.js?v=2026-09-02b";
-import { renderProfile } from "./profile.js?v=2026-09-02b";
-import { renderSupport } from "./support.js?v=2026-09-02b";
-import { renderReminder } from "./reminder.js?v=2026-09-02b";
-import { renderSettings } from "./settings.js?v=2026-09-02b";
-import { renderCollections } from "./collectors.js?v=2026-09-02b";
-import { mountAnnouncementsBell } from "./announcements.js?v=2026-09-02b";
-import { BUILD_ID } from "./version.js?v=2026-09-02b";
+} from "./members-self.js?v=2026-09-02c";
+import { getSelectedYear, getSupportedYears, setSelectedYear } from "./year-state.js?v=2026-09-02c";
+import { renderHome } from "./home.js?v=2026-09-02c";
+import { renderActivity, observeNewestPending } from "./activity.js?v=2026-09-02c";
+import { renderHandover } from "./handover.js?v=2026-09-02c";
+import { renderPayments } from "./payments.js?v=2026-09-02c";
+import { renderMembers } from "./members.js?v=2026-09-02c";
+import { renderProfile } from "./profile.js?v=2026-09-02c";
+import { renderSupport } from "./support.js?v=2026-09-02c";
+import { renderReminder } from "./reminder.js?v=2026-09-02c";
+import { renderSettings } from "./settings.js?v=2026-09-02c";
+import { renderCollections } from "./collectors.js?v=2026-09-02c";
+import { mountAnnouncementsBell } from "./announcements.js?v=2026-09-02c";
+import { BUILD_ID } from "./version.js?v=2026-09-02c";
 
 // Tab definitions per role. Mirrors Android nav order. Members no longer have
 // a Discussion tab at all - the chat is gone, and the Activity feed that

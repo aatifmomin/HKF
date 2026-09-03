@@ -22,7 +22,7 @@ import {
   get
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js";
 
-import { firebaseApp } from "./firebase-init.js?v=2026-09-02b";
+import { firebaseApp } from "./firebase-init.js?v=2026-09-02c";
 
 const db = getDatabase(firebaseApp);
 

@@ -24,11 +24,11 @@ import {
   update
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js";
 
-import { firebaseApp } from "./firebase-init.js?v=2026-09-02b";
-import { isOwner } from "./auth.js?v=2026-09-02b";
-import { BUILD_ID } from "./version.js?v=2026-09-02b";
-import { renderAdmins } from "./admins.js?v=2026-09-02b";
-import { renderSupportAdmin } from "./support.js?v=2026-09-02b";
+import { firebaseApp } from "./firebase-init.js?v=2026-09-02c";
+import { isOwner } from "./auth.js?v=2026-09-02c";
+import { BUILD_ID } from "./version.js?v=2026-09-02c";
+import { renderAdmins } from "./admins.js?v=2026-09-02c";
+import { renderSupportAdmin } from "./support.js?v=2026-09-02c";
 import {
   discoverYears,
   sliceYear,
@@ -38,8 +38,8 @@ import {
   resetSlice,
   deletePaths,
   recomputeAllMemberTotals
-} from "./year-data.js?v=2026-09-02b";
-import { DEFAULT_REMINDER_MESSAGE, DEFAULT_CONTACT_MESSAGE } from "./reminder.js?v=2026-09-02b";
+} from "./year-data.js?v=2026-09-02c";
+import { DEFAULT_REMINDER_MESSAGE, DEFAULT_CONTACT_MESSAGE } from "./reminder.js?v=2026-09-02c";
 import {
   pickFiles,
   prepareAttachment,
@@ -47,7 +47,7 @@ import {
   removePaymentQr,
   loadPaymentQr,
   ACCEPT_IMAGES
-} from "./attachments.js?v=2026-09-02b";
+} from "./attachments.js?v=2026-09-02c";
 
 const db = getDatabase(firebaseApp);
 

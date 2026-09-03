@@ -257,7 +257,7 @@ New or changed contracts, all now mirrored:
 | member self-edit | a member may write their own `contactNumber`, `currentAddress`, `permanentAddress`, `occupation` and nothing else. |
 | remove member | cascades in one atomic write: `members/{k}`, `payments/{k}`, `joinRequests/{k}`, plus `paymentRequests/{r}` + `paymentProofs/{r}` for every request that member filed. |
 | danger zone | three separate wipes — members (+payments +counter), handovers (+docs +counter), activity (requests +proofs +joins). |
-| year picker | dynamic: base 2026–2030 plus any year seen in a `coversMonthKey` (1990–2099). |
+| year picker | dynamic: a base range plus any year seen in a `coversMonthKey` (1990–2099). The base was 2026–2030 on both clients; the web now rolls it — see below. |
 
 ### The multi-month split, exactly
 
@@ -438,14 +438,45 @@ UPDATE, which is labelled as driving the phone app only. Same three
 users get the small "HKF web build …" line on Home instead, which is what
 actually answers "am I on the newest one?" for a browser.
 
-**5. The announcements bell lives in the shared top bar, not on Home.**
+**5. The year picker rolls; Android's is still hardcoded.**
+
+Both clients used a fixed `[2026, 2027, 2028, 2029, 2030]` base, grown by any
+year the data mentions. That range can't look back at 2024 or 2025, and runs
+out completely in 2031. The web now computes it as **two years back, this
+year, two forward** — 2024–2028 today, 2025–2029 next January, with no build
+to ship.
+
+Nothing is stored, so this cannot corrupt anything: each client computes its
+own list, and `ensureYears()` still merges in real data years on top. But
+until Android changes too, the two pickers offer different years, which looks
+like a bug to anyone holding both. The Kotlin is a three-line swap in
+`state/YearState.kt`:
+
+```kotlin
+private val baseYears: List<Int>
+    get() {
+        val now = Calendar.getInstance().get(Calendar.YEAR)
+        return ((now - 2)..(now + 2)).toList()
+    }
+
+// _years must then be seeded from it rather than from a val captured once:
+private val _years = MutableStateFlow(baseYears)
+```
+
+One thing to watch on the Android side: `_selectedYear` is initialised from
+`defaultYear()`, which clamps against `_years.value`. Making `baseYears` a
+computed property is fine there because the current year is always inside its
+own window — but keep the initialisation order (years before selectedYear) or
+`clamp` reads an empty list.
+
+**6. The announcements bell lives in the shared top bar, not on Home.**
 
 Android hangs it off the Home screen beside the year picker. The web's top bar
 is shared by every tab, so the bell sits there and is reachable from anywhere.
 Same node, same one-at-a-time rule, same per-device unread marker — strictly
 more reachable, not different.
 
-**6. Ticket ids and nothing else use a transaction.**
+**7. Ticket ids and nothing else use a transaction.**
 
 Carried over from the last round and still true: Android allocates a ticket id
 read-then-write, the web uses `runTransaction`, so two members filing in the

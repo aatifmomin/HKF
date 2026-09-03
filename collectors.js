@@ -36,9 +36,9 @@ import {
   remove
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js";
 
-import { firebaseApp } from "./firebase-init.js?v=2026-09-02b";
-import { isOwner, displayNameFor } from "./auth.js?v=2026-09-02b";
-import { pickFiles, prepareImageWithin, ACCEPT_IMAGES } from "./attachments.js?v=2026-09-02b";
+import { firebaseApp } from "./firebase-init.js?v=2026-09-02c";
+import { isOwner, displayNameFor } from "./auth.js?v=2026-09-02c";
+import { pickFiles, prepareImageWithin, ACCEPT_IMAGES } from "./attachments.js?v=2026-09-02c";
 
 const db = getDatabase(firebaseApp);
 

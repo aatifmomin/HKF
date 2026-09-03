@@ -10,11 +10,11 @@ import {
   get
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js";
 
-import { firebaseApp } from "./firebase-init.js?v=2026-09-02b";
-import { getSelectedYear, onYearChange, chartStartForYear, ensureYearsFromMonthKeys } from "./year-state.js?v=2026-09-02b";
-import { loadPaymentQr } from "./attachments.js?v=2026-09-02b";
-import { openPayDialog, statsFor } from "./collectors.js?v=2026-09-02b";
-import { BUILD_ID } from "./version.js?v=2026-09-02b";
+import { firebaseApp } from "./firebase-init.js?v=2026-09-02c";
+import { getSelectedYear, onYearChange, chartStartForYear, ensureYearsFromMonthKeys } from "./year-state.js?v=2026-09-02c";
+import { loadPaymentQr } from "./attachments.js?v=2026-09-02c";
+import { openPayDialog, statsFor } from "./collectors.js?v=2026-09-02c";
+import { BUILD_ID } from "./version.js?v=2026-09-02c";
 
 const db = getDatabase(firebaseApp);
 
@@ -216,7 +216,7 @@ export function renderHome(container) {
   if (pdfBtn) {
     pdfBtn.addEventListener("click", async () => {
       await runDownload(pdfBtn, async () => {
-        const mod = await import("./year-report.js?v=2026-09-02b");
+        const mod = await import("./year-report.js?v=2026-09-02c");
         await mod.downloadYearReportPdf(getSelectedYear());
       }, "PDF");
     });
@@ -224,7 +224,7 @@ export function renderHome(container) {
   if (xlsxBtn) {
     xlsxBtn.addEventListener("click", async () => {
       await runDownload(xlsxBtn, async () => {
-        const mod = await import("./year-report.js?v=2026-09-02b");
+        const mod = await import("./year-report.js?v=2026-09-02c");
         await mod.downloadYearReportXlsx(getSelectedYear());
       }, "Excel");
     });
@@ -251,7 +251,7 @@ export function renderHome(container) {
     shareBtn.disabled = true;
     shareBtn.innerHTML = `<span class="share-icon">⋯</span><span>Building...</span>`;
     try {
-      const mod = await import("./share-card.js?v=2026-09-02b");
+      const mod = await import("./share-card.js?v=2026-09-02c");
       const outcome = await mod.shareReferralCard({ ...lastStats, year: getSelectedYear() });
       if (outcome === "downloaded") {
         window.showSnackbar?.("Card saved to your downloads - attach it to a message");

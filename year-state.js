@@ -2,15 +2,35 @@
 //
 // Defaults to the current calendar year on every page load (no persistence).
 //
-// The year list is DYNAMIC, matching Android's YearState: it starts at
-// 2026-2030 and grows to include any year the data actually mentions. Back-fill
-// a member's 2025 payments and 2025 appears in the picker on its own, on both
-// clients. Data layers call ensureYears() with the years they see in
-// coversMonthKey values.
+// The year list is a ROLLING WINDOW around today: two years back, this year,
+// two years forward. In 2026 that is 2024-2028; in 2027 it becomes 2025-2029
+// on its own, with nothing to edit and no build to ship.
+//
+// It replaces the old fixed 2026-2030 list, which was going to strand the app
+// twice over: no way to look back at 2024 or 2025, and a picker that quietly
+// ran out in 2031.
+//
+// The list still GROWS to include any year the data actually mentions, so
+// back-filling a member's 2022 payments makes 2022 appear on its own. Data
+// layers call ensureYears() with the years they see in coversMonthKey values.
+//
+// NOTE: Android still hardcodes 2026-2030 in YearState.baseYears. Until that
+// changes the two pickers offer different years — cosmetic, since this list is
+// computed per client and never stored, but worth matching. The Kotlin is the
+// same three lines; see ANDROID-COMPAT.md.
 
-const BASE_YEARS = [2026, 2027, 2028, 2029, 2030];
+const YEARS_BACK = 2;
+const YEARS_FORWARD = 2;
 
-let years = [...BASE_YEARS];
+/** [thisYear - 2 ... thisYear + 2], computed fresh at load. */
+function baseYears() {
+  const now = new Date().getFullYear();
+  const out = [];
+  for (let y = now - YEARS_BACK; y <= now + YEARS_FORWARD; y++) out.push(y);
+  return out;
+}
+
+let years = baseYears();
 let selectedYear = clampToSupported(new Date().getFullYear());
 const subscribers = new Set();
 const yearListSubscribers = new Set();
