@@ -23,8 +23,8 @@ import {
   get
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js";
 
-import { firebaseApp } from "./firebase-init.js?v=2026-09-02a";
-import { loadJsPdf, loadXlsx } from "./lib-loader.js?v=2026-09-02a";
+import { firebaseApp } from "./firebase-init.js?v=2026-09-02b";
+import { loadJsPdf, loadXlsx } from "./lib-loader.js?v=2026-09-02b";
 
 const db = getDatabase(firebaseApp);
 

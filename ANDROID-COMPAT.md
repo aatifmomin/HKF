@@ -424,14 +424,19 @@ Android's string claims members see the QR on their Payments tab; the card
 actually renders on Home in both clients. The web copy describes where it
 really is.
 
-**4. The app-update card is not version-gated on the web, and says so.**
+**4. The app-update card does not exist on the web at all.**
 
 Android compares `appLatestVersion` with the version installed on that phone
-and shows the card only when there is genuinely something newer. A browser has
-no installed version — it always runs whatever was last deployed — so there is
-nothing to compare against. The web shows the card whenever the owner switches
-it on, and words it as an **Android app** update, which is what the APK link
-actually is, plus a line saying the website is always current.
+and shows an update card when something newer exists. A browser has no
+installed version to be behind — it always runs whatever was last deployed —
+and the APK behind `apkLink` is for a phone, so there is nothing a web user
+could usefully do with the card. The web doesn't render one.
+
+The owner still **configures** it from the web, in Settings → ANDROID APP
+UPDATE, which is labelled as driving the phone app only. Same three
+`/settings` keys, written identically; only the display is Android-side. Web
+users get the small "HKF web build …" line on Home instead, which is what
+actually answers "am I on the newest one?" for a browser.
 
 **5. The announcements bell lives in the shared top bar, not on Home.**
 

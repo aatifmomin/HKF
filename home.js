@@ -10,11 +10,11 @@ import {
   get
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js";
 
-import { firebaseApp } from "./firebase-init.js?v=2026-09-02a";
-import { getSelectedYear, onYearChange, chartStartForYear, ensureYearsFromMonthKeys } from "./year-state.js?v=2026-09-02a";
-import { loadPaymentQr } from "./attachments.js?v=2026-09-02a";
-import { openPayDialog, statsFor } from "./collectors.js?v=2026-09-02a";
-import { BUILD_ID } from "./version.js?v=2026-09-02a";
+import { firebaseApp } from "./firebase-init.js?v=2026-09-02b";
+import { getSelectedYear, onYearChange, chartStartForYear, ensureYearsFromMonthKeys } from "./year-state.js?v=2026-09-02b";
+import { loadPaymentQr } from "./attachments.js?v=2026-09-02b";
+import { openPayDialog, statsFor } from "./collectors.js?v=2026-09-02b";
+import { BUILD_ID } from "./version.js?v=2026-09-02b";
 
 const db = getDatabase(firebaseApp);
 
@@ -200,8 +200,6 @@ export function renderHome(container) {
       </button>
     </div>
 
-    <div class="update-card" id="update-card" hidden></div>
-
     <div class="app-version-line">HKF web build ${escapeHtml(BUILD_ID)}</div>
   `;
 
@@ -218,7 +216,7 @@ export function renderHome(container) {
   if (pdfBtn) {
     pdfBtn.addEventListener("click", async () => {
       await runDownload(pdfBtn, async () => {
-        const mod = await import("./year-report.js?v=2026-09-02a");
+        const mod = await import("./year-report.js?v=2026-09-02b");
         await mod.downloadYearReportPdf(getSelectedYear());
       }, "PDF");
     });
@@ -226,7 +224,7 @@ export function renderHome(container) {
   if (xlsxBtn) {
     xlsxBtn.addEventListener("click", async () => {
       await runDownload(xlsxBtn, async () => {
-        const mod = await import("./year-report.js?v=2026-09-02a");
+        const mod = await import("./year-report.js?v=2026-09-02b");
         await mod.downloadYearReportXlsx(getSelectedYear());
       }, "Excel");
     });
@@ -244,8 +242,6 @@ export function renderHome(container) {
   container.querySelector("#support-card")?.addEventListener("click", () => window.__openSupport?.());
   if (isAdmin) loadCollectionSummary(container);
 
-  // App-update card. Everyone sees it, members and admins alike.
-  const updateTeardown = setupUpdateCard(container);
 
   // Share card. Rendered from the numbers already on screen, so the button is
   // instant after the canvas module loads.
@@ -255,7 +251,7 @@ export function renderHome(container) {
     shareBtn.disabled = true;
     shareBtn.innerHTML = `<span class="share-icon">⋯</span><span>Building...</span>`;
     try {
-      const mod = await import("./share-card.js?v=2026-09-02a");
+      const mod = await import("./share-card.js?v=2026-09-02b");
       const outcome = await mod.shareReferralCard({ ...lastStats, year: getSelectedYear() });
       if (outcome === "downloaded") {
         window.showSnackbar?.("Card saved to your downloads - attach it to a message");
@@ -312,7 +308,6 @@ export function renderHome(container) {
     if (unsubHandovers) unsubHandovers();
     unsubYear();
     if (qrTeardown) qrTeardown();
-    updateTeardown();
     unsubMembers = unsubPayments = unsubHandovers = null;
   };
 }
@@ -533,44 +528,6 @@ async function loadCollectionSummary(container) {
     console.warn("collection summary failed", e);
     host.innerHTML = `<div class="coll-summary-error">Couldn't load figures</div>`;
   }
-}
-
-/**
- * App-update card, driven by /settings/{appUpdateEnabled, appLatestVersion,
- * appUpdateNotes} and pointing at apkLink.
- *
- * Divergence from Android, deliberate: Android compares appLatestVersion with
- * the version installed on that phone and hides the card when they match. A
- * browser has no installed version — it always runs whatever was last
- * deployed — so the web shows the card whenever the owner has switched it on,
- * and words it as an ANDROID app update, which is what the APK link is.
- */
-function setupUpdateCard(container) {
-  const card = container.querySelector("#update-card");
-  if (!card) return () => {};
-
-  const unsub = onValue(ref(db, "settings"), snap => {
-    const v = snap.val() || {};
-    const enabled = v.appUpdateEnabled === true;
-    const version = String(v.appLatestVersion || "").trim();
-    const notes = String(v.appUpdateNotes || "").trim();
-    const link = String(v.apkLink || "").trim();
-    if (!enabled || !version) { card.hidden = true; return; }
-    card.hidden = false;
-    card.innerHTML = `
-      <div class="update-eyebrow">ANDROID APP UPDATE</div>
-      <div class="update-title">Version ${escapeHtml(version)} is available</div>
-      ${notes ? `<div class="update-notes">${escapeHtml(notes)}</div>` : ""}
-      ${link ? `
-        <a class="update-btn" href="${escapeHtml(link)}" target="_blank" rel="noopener">Get the app</a>
-        <div class="update-hint">
-          Download from the link, open the file and install over the existing
-          app — your data stays safe. This website is always up to date.
-        </div>` : ""}
-    `;
-  }, () => { card.hidden = true; });
-
-  return unsub;
 }
 
 /**

@@ -11,4 +11,4 @@
 //      the sign-in screen and at the bottom of Settings, and is logged to the
 //      browser console at startup.
 
-export const BUILD_ID = "2026-09-02a";
+export const BUILD_ID = "2026-09-02b";

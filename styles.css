@@ -1189,7 +1189,7 @@ input, textarea, select {
 /* Annual report download section on Home ------------------- */
 
 .download-section {
-  margin-top: 24px;
+  margin-top: 20px;
   padding: 18px;
   background: var(--surface);
   border: 1px solid rgba(154,106,31,0.20);
@@ -1819,7 +1819,7 @@ input, textarea, select {
    ============================================================ */
 
 .share-section {
-  margin-top: 18px;
+  margin-top: 20px;
   background: var(--surface);
   border: 1px solid rgba(154,106,31,0.14);
   border-radius: var(--radius-l);
@@ -2268,7 +2268,9 @@ a.row-btn {
   border: 1px solid rgba(154,106,31,0.20);
   border-radius: var(--radius-l);
   padding: 14px 16px;
-  margin-bottom: 16px;
+  /* Home spaces its blocks with margin-TOP, one 20px rhythm all the way
+     down. A margin-bottom here left this card welded to the header above. */
+  margin-top: 20px;
   box-shadow: var(--shadow-s);
 }
 .qr-card.ready { cursor: pointer; }
@@ -2501,7 +2503,8 @@ a.row-btn {
   font-size: 12px;
   line-height: 1.5;
   color: var(--text-2);
-  margin: 0 0 4px;
+  /* .modal-body supplies the 12px gap; a margin here stacks on top of it. */
+  margin: 0;
 }
 
 /* Four member tabs need a touch less padding than three to stay on one line. */
@@ -2512,7 +2515,10 @@ a.row-btn {
    --------------------------------------------------------------------------- */
 
 /* --- Announcements bell, in the top bar beside the year picker --- */
-.bell-host { display: inline-flex; margin-left: 8px; }
+/* The bell belongs beside the year picker, not floating in the middle: the
+   top bar is space-between, so the two have to share one flex group. */
+.top-bar-left { display: flex; align-items: center; gap: 8px; }
+.bell-host { display: inline-flex; }
 .bell-btn {
   position: relative;
   width: 34px;
@@ -2636,6 +2642,10 @@ a.row-btn {
   color: inherit;
 }
 .choice-row:hover { border-color: var(--gold-dark); }
+/* .modal-body is a flex column with gap:12 — a margin here stacks on top of
+   it and the rows drift apart. Same for the cards in the sheet. */
+.modal-body > .choice-row,
+.modal-body > .announce-card { margin-bottom: 0; }
 .choice-text { flex: 1; min-width: 0; display: block; }
 .choice-title { display: block; font-size: 14px; font-weight: 600; }
 .choice-sub { display: block; font-size: 11px; color: var(--text-3); margin-top: 2px; }
@@ -2681,7 +2691,7 @@ a.row-btn {
   border: 1px solid rgba(154,106,31,0.20);
   border-radius: var(--radius-l);
   padding: 16px;
-  margin-bottom: 20px;
+  margin-top: 20px;          /* Home's rhythm — see .qr-card */
   cursor: pointer;
   box-shadow: var(--shadow-s);
 }
@@ -2727,11 +2737,19 @@ a.row-btn {
 .coll-summary-error { font-size: 11px; color: var(--text-3); }
 
 /* --- My Collections screen --- */
+/* Every other screen leaves 12px under the page header (the search input
+   does it with margin-top); the card stacks were the odd ones out. */
+.page-header + .settings-section { margin-top: 12px; }
+
+/* An empty helper line still contributed its margins, which is what opened
+   the 28px hole under the money-picture grid. */
+.settings-help:empty { display: none; }
+
 .coll-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
-  margin-bottom: 8px;
+  margin-bottom: 0;
 }
 .coll-cell {
   background: var(--surface);
@@ -2748,6 +2766,8 @@ a.row-btn {
 }
 .coll-cell-value { font-size: 16px; font-weight: 700; color: var(--gold-dark); margin-top: 3px; }
 .coll-cell-sub { font-size: 10px; color: var(--text-3); }
+/* .settings-section is a flex column with gap:10 — margins here would stack
+   on top of that and open a hole under the grid. Let the gap do the work. */
 .coll-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .coll-actions .settings-save { margin-top: 0; }
 
@@ -2797,35 +2817,6 @@ a.row-btn {
 /* --- Collector gate note on an Activity request card --- */
 .activity-waiting { font-size: 12px; color: var(--text-3); line-height: 1.4; }
 .activity-paid-to { color: var(--gold-dark); font-weight: 600; }
-
-/* --- App-update card at the bottom of Home --- */
-.update-card {
-  background: #F8EED7;
-  border: 1px solid rgba(154,106,31,0.45);
-  border-radius: var(--radius-l);
-  padding: 16px;
-  margin-top: 20px;
-}
-.update-eyebrow {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.10em;
-  color: var(--gold-dark);
-}
-.update-title { font-size: 13px; font-weight: 600; margin-top: 4px; }
-.update-notes { font-size: 11px; color: var(--text-3); margin-top: 4px; white-space: pre-wrap; }
-.update-btn {
-  display: inline-block;
-  margin-top: 10px;
-  border-radius: 999px;
-  background: var(--gold-dark);
-  color: #fff;
-  font-size: 13px;
-  font-weight: 600;
-  padding: 9px 18px;
-  text-decoration: none;
-}
-.update-hint { font-size: 10px; color: var(--text-3); margin-top: 6px; line-height: 1.4; }
 
 .app-version-line {
   text-align: center;

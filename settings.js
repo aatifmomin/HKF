@@ -24,11 +24,11 @@ import {
   update
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js";
 
-import { firebaseApp } from "./firebase-init.js?v=2026-09-02a";
-import { isOwner } from "./auth.js?v=2026-09-02a";
-import { BUILD_ID } from "./version.js?v=2026-09-02a";
-import { renderAdmins } from "./admins.js?v=2026-09-02a";
-import { renderSupportAdmin } from "./support.js?v=2026-09-02a";
+import { firebaseApp } from "./firebase-init.js?v=2026-09-02b";
+import { isOwner } from "./auth.js?v=2026-09-02b";
+import { BUILD_ID } from "./version.js?v=2026-09-02b";
+import { renderAdmins } from "./admins.js?v=2026-09-02b";
+import { renderSupportAdmin } from "./support.js?v=2026-09-02b";
 import {
   discoverYears,
   sliceYear,
@@ -38,8 +38,8 @@ import {
   resetSlice,
   deletePaths,
   recomputeAllMemberTotals
-} from "./year-data.js?v=2026-09-02a";
-import { DEFAULT_REMINDER_MESSAGE, DEFAULT_CONTACT_MESSAGE } from "./reminder.js?v=2026-09-02a";
+} from "./year-data.js?v=2026-09-02b";
+import { DEFAULT_REMINDER_MESSAGE, DEFAULT_CONTACT_MESSAGE } from "./reminder.js?v=2026-09-02b";
 import {
   pickFiles,
   prepareAttachment,
@@ -47,7 +47,7 @@ import {
   removePaymentQr,
   loadPaymentQr,
   ACCEPT_IMAGES
-} from "./attachments.js?v=2026-09-02a";
+} from "./attachments.js?v=2026-09-02b";
 
 const db = getDatabase(firebaseApp);
 
@@ -207,13 +207,14 @@ export function renderSettings(container, { onBack } = {}) {
       </div>
 
       <div class="settings-section">
-        <div class="settings-label">ANDROID APP VERSION &amp; UPDATE</div>
+        <div class="settings-label">ANDROID APP UPDATE</div>
         <div class="settings-help">
-          Upload the new APK to the app link above, enter the version and
-          what's new, and switch this on — an update card appears at the bottom
-          of everyone's Home with a download button. Switch off to hide it.
-          Nothing is ever blocked; members update manually. The website itself
-          always serves the newest build, so this card is about the phone app.
+          This controls the <strong>phone app only</strong> — the website
+          always serves the newest build, so nothing here changes what you're
+          looking at now. Upload the new APK to the app link above, enter the
+          version and what's new, and switch this on: Android members whose
+          phone is on an older version get an update card on their Home with a
+          download button. Switch off to hide it. Nobody is ever blocked.
         </div>
         <label class="field">
           <span>Latest version (e.g. 1.1)</span>
@@ -225,7 +226,7 @@ export function renderSettings(container, { onBack } = {}) {
         </label>
         <label class="toggle-field">
           <span class="toggle-text">
-            <span class="toggle-title">Show update on dashboards</span>
+            <span class="toggle-title">Show update in the Android app</span>
             <span class="toggle-sub" id="st-app-state">Hidden</span>
           </span>
           <input type="checkbox" id="st-app-enabled" />
@@ -334,7 +335,7 @@ export function renderSettings(container, { onBack } = {}) {
 
     function refreshAppState() {
       container.querySelector("#st-app-state").textContent =
-        appEnabledEl.checked ? "Visible to all members and admins" : "Hidden";
+        appEnabledEl.checked ? "Visible to Android users on an older version" : "Hidden";
     }
     appEnabledEl.addEventListener("change", refreshAppState);
 

@@ -3,6 +3,6 @@
 // with app.js.
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js";
-import { firebaseConfig } from "./firebase-config.js?v=2026-09-02a";
+import { firebaseConfig } from "./firebase-config.js?v=2026-09-02b";
 
 export const firebaseApp = initializeApp(firebaseConfig);

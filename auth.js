@@ -14,8 +14,8 @@ import {
   onValue
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js";
 
-import { firebaseApp } from "./firebase-init.js?v=2026-09-02a";
-import { OWNER_EMAIL } from "./firebase-config.js?v=2026-09-02a";
+import { firebaseApp } from "./firebase-init.js?v=2026-09-02b";
+import { OWNER_EMAIL } from "./firebase-config.js?v=2026-09-02b";
 
 const auth = getAuth(firebaseApp);
 const db = getDatabase(firebaseApp);

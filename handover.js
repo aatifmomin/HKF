@@ -17,8 +17,8 @@ import {
   runTransaction
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js";
 
-import { firebaseApp } from "./firebase-init.js?v=2026-09-02a";
-import { getSelectedYear, onYearChange } from "./year-state.js?v=2026-09-02a";
+import { firebaseApp } from "./firebase-init.js?v=2026-09-02b";
+import { getSelectedYear, onYearChange } from "./year-state.js?v=2026-09-02b";
 import {
   pickFiles,
   prepareAll,
@@ -28,7 +28,7 @@ import {
   viewHandoverDoc,
   formatBytes,
   ACCEPT_DOCS
-} from "./attachments.js?v=2026-09-02a";
+} from "./attachments.js?v=2026-09-02b";
 
 const db = getDatabase(firebaseApp);
 

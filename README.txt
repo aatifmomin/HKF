@@ -9,11 +9,11 @@ Every build now carries a visible id. Check it before anything else:
   * it is printed on the SIGN-IN screen, under the Google button
   * it is at the bottom of Settings (gear on Home, owner only)
   * it is logged to the browser console at startup:
-        HKF web build 2026-09-02a
+        HKF web build 2026-09-02b
 
-This build is  2026-09-02a.
+This build is  2026-09-02b.
 
-  Shows 2026-09-02a  -> the new code IS live. If a specific screen still
+  Shows 2026-09-02b  -> the new code IS live. If a specific screen still
                         looks wrong, see "which screens changed" below —
                         several of the new ones are MEMBER-only and are
                         invisible while you're signed in as Admin.
@@ -58,7 +58,7 @@ Run ./bump-version.sh before redeploying. It rewrites the build id in
 version.js and the ?v= stamp on every import, so browsers fetch the new code
 instead of reusing what they already have.
 
-  ./bump-version.sh              uses today's date, e.g. 2026-09-02a
+  ./bump-version.sh              uses today's date, e.g. 2026-09-02b
   ./bump-version.sh my-build-7   uses whatever you pass
 
 No shell? Edit version.js by hand and do a find-and-replace of the old ?v=
@@ -203,16 +203,16 @@ Backup, restore and reset — by year  (NEW, owner only)
   payments that actually survive, so the cards and exports don't show stale
   figures.
 
-Android app update card  (NEW)
-  Settings > ANDROID APP VERSION & UPDATE. Put the new APK on the app link,
-  enter the version and what's new, switch it on, and an update card appears
-  at the bottom of everyone's Home with a download button. Switch off to hide
-  it. Nothing is blocked; members update manually.
+Android app update  (NEW — controls the PHONE app, not this one)
+  Settings > ANDROID APP UPDATE. Put the new APK on the app link, enter the
+  version and what's new, and switch it on. Android members whose phone is on
+  an older version get an update card on their Home with a download button.
+  Switch off to hide it. Nobody is ever blocked; they update manually.
 
-  On the phone Android hides the card once you're on the newest version. A
-  browser has no installed version to compare, so the web shows it whenever
-  it's switched on and words it as an ANDROID app update — the website itself
-  always serves the newest build.
+  Nothing appears on the WEBSITE. There's no point: a browser has no installed
+  version to be behind, and the APK is for a phone. The site always serves the
+  newest build — the small "HKF web build ..." line at the bottom of Home is
+  how you confirm which one you're on.
 
 Website link on the share card
   Settings > SHARE & REFER LINK now takes a website URL alongside the app

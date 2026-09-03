@@ -22,15 +22,15 @@ import {
   serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js";
 
-import { firebaseApp } from "./firebase-init.js?v=2026-09-02a";
-import { displayNameFor } from "./auth.js?v=2026-09-02a";
+import { firebaseApp } from "./firebase-init.js?v=2026-09-02b";
+import { displayNameFor } from "./auth.js?v=2026-09-02b";
 import {
   getSelectedYear,
   onYearChange,
   chartStartForYear,
   ensureYearsFromMonthKeys,
   nextNMonths
-} from "./year-state.js?v=2026-09-02a";
+} from "./year-state.js?v=2026-09-02b";
 import {
   pickFiles,
   prepareAttachment,
@@ -39,7 +39,7 @@ import {
   viewPaymentProof,
   formatBytes,
   ACCEPT_IMAGES
-} from "./attachments.js?v=2026-09-02a";
+} from "./attachments.js?v=2026-09-02b";
 
 import {
   observeCollectors,
@@ -47,7 +47,7 @@ import {
   clearCollectorChoice,
   HKF_DIRECT_UID,
   HKF_DIRECT_LABEL
-} from "./collectors.js?v=2026-09-02a";
+} from "./collectors.js?v=2026-09-02b";
 
 const db = getDatabase(firebaseApp);
 const MONTH_LABELS = ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"];
